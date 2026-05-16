@@ -25,7 +25,7 @@ React Native / Expo app for sending professional order update messages to custom
 - **4 send channels** — WhatsApp, SMS, Email, Copy
 - **Recent messages** — last 30 entries with search, status filters, and one-tap resend
 - **Stats card** — messages sent today
-- **Milestone confetti** — fires at 10, 25, 50, 100+ messages sent
+- **Milestone confetti** — fires at 10, 50, 100 messages sent
 - **Reminder card** — flags customers with pending statuses not updated in 24h+
 - **Weekly report card** — Mondays: last week's updates, unique customers, best day
 - **Welcome back card** — appears after 48h+ away, shows pending customers

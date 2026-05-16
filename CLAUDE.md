@@ -272,13 +272,21 @@ orderflow-ai/
 └── next.config.mjs                    # Security headers (no wildcard CORS)
 ```
 
----
+---c
 
 ## Common Gotchas
 
 - **Metro OOM**: `metro.config.js` sets `maxWorkers: 1` — required on this machine (4GB RAM)
-- **Expo server**: run from `mobile/` with `npx expo start --host lan --port 8081`
-- **Phone connection**: firewall rule added for ports 8081-8082 (inbound TCP). Use `--host lan` to get correct QR code IP.
+- **Expo server**: run from `mobile/` — use this exact command (forces correct WiFi IP, bypasses multi-adapter confusion):
+  ```
+  set REACT_NATIVE_PACKAGER_HOSTNAME=192.168.110.207 && npx expo start --port 8081
+  ```
+- **Phone connection**: firewall rule required for ports 8081-8082 (inbound TCP). Add it once from an admin prompt:
+  ```
+  netsh advfirewall firewall add rule name="Expo Metro 8081" dir=in action=allow protocol=TCP localport=8081-8082
+  ```
+- **Multi-adapter gotcha**: PC has two network adapters (Wi-Fi on `192.168.110.207` via "Buthelezi Wifi", hotspot on `172.20.10.11`). `--host lan` picks the wrong one. Always set `REACT_NATIVE_PACKAGER_HOSTNAME=192.168.110.207` explicitly.
+- **Phone must be on "Buthelezi Wifi"** — same network as the PC.
 - **iOS SMS separator**: use `&body=` not `?body=` on iOS (handled in `deep-links.ts` via `Platform.OS`)
 - **WhatsApp**: `https://wa.me/27XXXXXXXXX` — no + symbol, no spaces, no leading 0
 - **Email button**: always tappable — shows Alert if email field is empty
