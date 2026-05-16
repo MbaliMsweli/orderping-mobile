@@ -15,7 +15,8 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.orderping.app"
+      "bundleIdentifier": "com.orderping.app",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,6 +24,7 @@
         "backgroundColor": "#1A56E8"
       },
       "package": "com.orderping.app",
+      "versionCode": 1,
       "edgeToEdgeEnabled": true
     },
     "web": {
