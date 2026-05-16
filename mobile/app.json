@@ -33,6 +33,13 @@
     },
     "plugins": [
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c8e3b2d1-088e-42cf-a19f-5fcfdf7fc72e"
+      }
+    },
+    "owner": "mbalisto"
   }
 }
