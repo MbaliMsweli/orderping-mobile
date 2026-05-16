@@ -39,4 +39,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
+# expo web build artifacts (should never be in this repo)
+/public/_expo/
+/public/assets/
+/public/expo-app.html
+/public/header-preview.html

@@ -40,7 +40,7 @@ Small business owners send order updates constantly. OrderPing removes the frict
 
 | What | Tool |
 |---|---|
-| Framework | Next.js 14, React 19 |
+| Framework | Next.js 15, React 19 |
 | AI | Anthropic Claude API |
 | Auth + DB | Supabase |
 | Hosting | Vercel |
@@ -60,7 +60,10 @@ orderflow-ai/
 │       ├── generate-message/ # AI message generation
 │       └── extract-order/    # AI order detail extraction
 ├── components/               # UI components
+├── middleware.ts             # Server-side auth gate (all page routes)
 └── lib/
+    ├── cors.ts               # Origin allowlist for CORS headers
+    ├── rate-limit.ts         # Upstash Redis rate limiter (fail-closed)
     ├── storage.ts            # localStorage helpers
     ├── supabase.ts           # Supabase client
     └── deep-links.ts         # WhatsApp / SMS / Email URL builders
@@ -72,7 +75,7 @@ orderflow-ai/
 
 ```bash
 npm install
-cp .env.example .env.local   # add your keys
+cp .env.local.example .env.local   # add your keys
 npm run dev
 ```
 
@@ -82,7 +85,11 @@ Required environment variables:
 ANTHROPIC_API_KEY=
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
 ```
+
+> **Note:** `UPSTASH_REDIS_*` are required for rate limiting. The API fails closed in production — all requests are blocked if these are missing. Create a free Redis DB at [upstash.com](https://upstash.com).
 
 ---
 
