@@ -11,13 +11,13 @@ export default function Index() {
 
   useEffect(() => {
     (async () => {
-      // Read local cache first — avoids a visible spinner on every cold open
-      const [cachedProfile, { data }] = await Promise.all([
+      // getUser() validates the JWT server-side; getSession() only reads local cache
+      const [cachedProfile, { data: { user } }] = await Promise.all([
         getProfile(),
-        supabase.auth.getSession(),
+        supabase.auth.getUser(),
       ]);
 
-      if (!data.session) {
+      if (!user) {
         router.replace('/(auth)');
         return;
       }
