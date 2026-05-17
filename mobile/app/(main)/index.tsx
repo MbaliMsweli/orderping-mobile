@@ -486,7 +486,7 @@ export default function MainScreen() {
     setShowRecent(false);
     setSearchQuery('');
     setExpandedIndex(null);
-    setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 50);
+    setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: false }), 150);
   };
 
   const handleRecentSend = async (entry: RecentEntry, channel: Channel) => {
@@ -630,7 +630,10 @@ export default function MainScreen() {
                             <Text style={s.recentSendBtnText} numberOfLines={1}>Copy</Text>
                           </TouchableOpacity>
                         </View>
-                        <TouchableOpacity onPress={() => handleUseContact(entry)} style={s.useContactBtn}>
+                        <TouchableOpacity
+                          onPress={(e) => { e.stopPropagation(); handleUseContact(entry); }}
+                          style={s.useContactBtn}
+                        >
                           <Text style={s.useContactText}>Use this contact for a new message →</Text>
                         </TouchableOpacity>
                       </>
