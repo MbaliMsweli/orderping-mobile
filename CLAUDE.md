@@ -272,7 +272,7 @@ orderflow-ai/
 └── next.config.mjs                    # Security headers (no wildcard CORS)
 ```
 
----c
+---
 
 ## Common Gotchas
 

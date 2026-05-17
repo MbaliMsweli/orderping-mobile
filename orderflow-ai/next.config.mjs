@@ -14,10 +14,10 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'",
+              "script-src 'self' 'unsafe-inline' https://connect.facebook.net",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob:",
-              "connect-src 'self' https://*.supabase.co",
+              "img-src 'self' data: blob: https://www.facebook.com",
+              "connect-src 'self' https://*.supabase.co https://www.facebook.com https://connect.facebook.net",
               "font-src 'self'",
               "frame-ancestors 'none'",
               "form-action 'self'",
