@@ -479,10 +479,19 @@ export default function MainScreen() {
   };
 
   const handleUseContact = (entry: RecentEntry) => {
+    // Pre-fill contact details
     setCustomerName(entry.customerName);
     setPhoneNumber(entry.phoneNumber);
     setEmail(entry.email ?? '');
-    if (entry.courier) setCourier(entry.courier);
+    // Clear all order-specific fields so the user starts fresh
+    setOrderText('');
+    setStatus(null);
+    setReceivedNote(null); setDelayReason(null);
+    setDispatchDate(null); setReadyNote(null); setPreOrderNote(null);
+    setCourier(null); setOtherCourierName(''); setWaybill('');
+    setTone('friendly');
+    setMessage('');
+    clearDraft();
     setShowRecent(false);
     setSearchQuery('');
     setExpandedIndex(null);
