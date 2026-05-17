@@ -602,6 +602,49 @@ export default function MainScreen() {
                 const badge    = STATUS_BADGES[entry.status];
                 const expanded = expandedIndex === i;
                 const preview  = entry.message.replace(/\n/g, ' ').slice(0, 72);
+                if (expanded) {
+                  return (
+                    <View key={i} style={s.recentCard}>
+                      <TouchableOpacity onPress={() => handleRecentTap(i)} activeOpacity={0.85}>
+                        <View style={s.recentCardTop}>
+                          <Text style={s.recentName}>{entry.customerName}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            {badge && (
+                              <View style={[s.badge, { backgroundColor: badge.color + '20' }]}>
+                                <Text style={[s.badgeText, { color: badge.color }]}>{badge.label}</Text>
+                              </View>
+                            )}
+                            <Text style={s.recentTime}>{relativeTime(entry.timestamp)}</Text>
+                          </View>
+                        </View>
+                        <View style={s.recentCardMeta}>
+                          <Text style={s.recentPhone}>{entry.phoneNumber}</Text>
+                          <Text style={s.channelIcon}>{CHANNEL_ICONS[entry.channel] ?? '📋'}</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <Text style={s.recentFullMessage}>{entry.message}</Text>
+                      <View style={s.recentSendRow}>
+                        <TouchableOpacity style={[s.recentSendBtn, { backgroundColor: Colors.whatsapp }]} onPress={() => handleRecentSend(entry, 'whatsapp')} activeOpacity={0.85}>
+                          <Text style={s.recentSendBtnText} numberOfLines={1}>WhatsApp</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[s.recentSendBtn, { backgroundColor: Colors.sms }]} onPress={() => handleRecentSend(entry, 'sms')} activeOpacity={0.85}>
+                          <Text style={s.recentSendBtnText} numberOfLines={1}>SMS</Text>
+                        </TouchableOpacity>
+                        {!!entry.email && (
+                          <TouchableOpacity style={[s.recentSendBtn, { backgroundColor: Colors.email }]} onPress={() => handleRecentSend(entry, 'email')} activeOpacity={0.85}>
+                            <Text style={s.recentSendBtnText} numberOfLines={1}>Email</Text>
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity style={[s.recentSendBtn, { backgroundColor: Colors.textMuted }]} onPress={() => handleRecentSend(entry, 'copy')} activeOpacity={0.85}>
+                          <Text style={s.recentSendBtnText} numberOfLines={1}>Copy</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <TouchableOpacity onPress={() => handleUseContact(entry)} style={s.useContactBtn}>
+                        <Text style={s.useContactText}>Use this contact for a new message →</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
                 return (
                   <TouchableOpacity key={i} style={s.recentCard} onPress={() => handleRecentTap(i)} activeOpacity={0.85}>
                     <View style={s.recentCardTop}>
@@ -619,36 +662,7 @@ export default function MainScreen() {
                       <Text style={s.recentPhone}>{entry.phoneNumber}</Text>
                       <Text style={s.channelIcon}>{CHANNEL_ICONS[entry.channel] ?? '📋'}</Text>
                     </View>
-
-                    {expanded ? (
-                      <>
-                        <Text style={s.recentFullMessage}>{entry.message}</Text>
-                        <View style={s.recentSendRow}>
-                          <TouchableOpacity style={[s.recentSendBtn, { backgroundColor: Colors.whatsapp }]} onPress={() => handleRecentSend(entry, 'whatsapp')} activeOpacity={0.85}>
-                            <Text style={s.recentSendBtnText} numberOfLines={1}>WhatsApp</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[s.recentSendBtn, { backgroundColor: Colors.sms }]} onPress={() => handleRecentSend(entry, 'sms')} activeOpacity={0.85}>
-                            <Text style={s.recentSendBtnText} numberOfLines={1}>SMS</Text>
-                          </TouchableOpacity>
-                          {!!entry.email && (
-                            <TouchableOpacity style={[s.recentSendBtn, { backgroundColor: Colors.email }]} onPress={() => handleRecentSend(entry, 'email')} activeOpacity={0.85}>
-                              <Text style={s.recentSendBtnText} numberOfLines={1}>Email</Text>
-                            </TouchableOpacity>
-                          )}
-                          <TouchableOpacity style={[s.recentSendBtn, { backgroundColor: Colors.textMuted }]} onPress={() => handleRecentSend(entry, 'copy')} activeOpacity={0.85}>
-                            <Text style={s.recentSendBtnText} numberOfLines={1}>Copy</Text>
-                          </TouchableOpacity>
-                        </View>
-                        <TouchableOpacity
-                          onPress={(e) => { e.stopPropagation(); handleUseContact(entry); }}
-                          style={s.useContactBtn}
-                        >
-                          <Text style={s.useContactText}>Use this contact for a new message →</Text>
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      <Text style={s.recentPreview} numberOfLines={2}>{preview}</Text>
-                    )}
+                    <Text style={s.recentPreview} numberOfLines={2}>{preview}</Text>
                   </TouchableOpacity>
                 );
               })}
