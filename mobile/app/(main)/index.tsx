@@ -206,6 +206,7 @@ function detectFrustration(phone: string, recent: RecentEntry[]): FrustrationRes
 
 export default function MainScreen() {
   const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
   const [profile, setProfile]   = useState<BusinessProfile | null>(null);
   const [greeting, setGreeting] = useState('');
 
@@ -485,6 +486,7 @@ export default function MainScreen() {
     setShowRecent(false);
     setSearchQuery('');
     setExpandedIndex(null);
+    setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 50);
   };
 
   const handleRecentSend = async (entry: RecentEntry, channel: Channel) => {
@@ -655,7 +657,7 @@ export default function MainScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView style={s.root} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} style={s.root} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {Hero}
 
         {/* Stats */}
