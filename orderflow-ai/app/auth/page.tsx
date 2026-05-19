@@ -58,6 +58,21 @@ export default function AuthPage() {
     }
   };
 
+  const handleGuest = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const { error: err } = await supabase.auth.signInAnonymously();
+      if (err) throw err;
+      const profile = getProfile();
+      router.replace(profile ? '/' : '/setup');
+    } catch {
+      setError('Could not start guest session. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setError('');
@@ -492,6 +507,34 @@ export default function AuthPage() {
                   )}
                 </button>
               </form>
+
+              {/* Divider + Guest */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                <span style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>or</span>
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGuest}
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '14px',
+                  borderRadius: 'var(--radius-xl)',
+                  border: '1.5px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontFamily: 'var(--font-display)', fontSize: '0.9375rem', fontWeight: 600,
+                  minHeight: 50,
+                  transition: 'all var(--transition-fast)',
+                }}
+                onMouseEnter={(e) => { (e.target as HTMLButtonElement).style.borderColor = 'var(--border-focus)'; (e.target as HTMLButtonElement).style.color = 'var(--text)'; }}
+                onMouseLeave={(e) => { (e.target as HTMLButtonElement).style.borderColor = 'var(--border)'; (e.target as HTMLButtonElement).style.color = 'var(--text-muted)'; }}
+              >
+                Continue as Guest
+              </button>
             </>
           )}
         </div>

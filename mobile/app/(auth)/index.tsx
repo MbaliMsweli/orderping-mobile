@@ -54,6 +54,21 @@ export default function AuthScreen() {
     }
   };
 
+  const handleGuest = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const { error: err } = await supabase.auth.signInAnonymously();
+      if (err) throw err;
+      const profile = await getProfile();
+      router.replace(profile ? '/(main)' : '/(setup)');
+    } catch {
+      setError('Could not start guest session. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleForgot = async () => {
     setError('');
     if (!email.trim()) { setError('Enter your email address.'); return; }
@@ -196,7 +211,20 @@ export default function AuthScreen() {
           }
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }}>
+        <View style={s.divider}>
+          <View style={s.dividerLine} />
+          <Text style={s.dividerText}>or</Text>
+          <View style={s.dividerLine} />
+        </View>
+
+        <TouchableOpacity onPress={handleGuest} disabled={loading} style={s.guestBtn} activeOpacity={0.8}>
+          {loading
+            ? <ActivityIndicator color={Colors.textMuted} />
+            : <Text style={s.guestText}>Continue as Guest</Text>
+          }
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }} style={s.switchWrap}>
           <Text style={s.switchText}>
             {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
             <Text style={s.switchLink}>{mode === 'signin' ? 'Sign up' : 'Sign in'}</Text>
@@ -209,7 +237,7 @@ export default function AuthScreen() {
 
 const s = StyleSheet.create({
   root:             { flex: 1, backgroundColor: Colors.background },
-  scroll:           { flexGrow: 1, padding: 24, justifyContent: 'center' },
+  scroll:           { flexGrow: 1, padding: 24, paddingTop: 80, paddingBottom: 40 },
   brand:            { alignItems: 'center', marginBottom: 40 },
   brandText:        { fontSize: 36, letterSpacing: -0.5 },
   brandOrder:       { color: Colors.text, fontWeight: '600' },
@@ -225,6 +253,12 @@ const s = StyleSheet.create({
   error:            { color: Colors.error, fontSize: 14, marginBottom: 12, textAlign: 'center' },
   submitBtn:        { backgroundColor: Colors.primary, borderRadius: 16, padding: 16, alignItems: 'center', marginBottom: 20, minHeight: 54, justifyContent: 'center' },
   submitText:       { color: 'white', fontSize: 16, fontWeight: '700' },
+  divider:          { flexDirection: 'row', alignItems: 'center', marginVertical: 16 },
+  dividerLine:      { flex: 1, height: 1, backgroundColor: Colors.border },
+  dividerText:      { marginHorizontal: 12, fontSize: 13, color: Colors.textLight },
+  guestBtn:         { borderWidth: 1.5, borderColor: Colors.border, borderRadius: 16, padding: 14, alignItems: 'center', minHeight: 50, justifyContent: 'center' },
+  guestText:        { fontSize: 15, fontWeight: '600', color: Colors.textMuted },
+  switchWrap:       { marginTop: 20 },
   switchText:       { textAlign: 'center', color: Colors.textMuted, fontSize: 14 },
   switchLink:       { color: Colors.primary, fontWeight: '600' },
 
