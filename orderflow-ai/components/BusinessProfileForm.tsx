@@ -24,8 +24,24 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--text)', outline: 'none', minHeight: 52,
 };
 
+const TYPE_OPTIONS = [
+  {
+    value: 'product' as const,
+    emoji: '📦',
+    label: 'Product Business',
+    sub: 'Orders, shipping & deliveries',
+  },
+  {
+    value: 'service' as const,
+    emoji: '🔧',
+    label: 'Service Business',
+    sub: 'Appointments, technicians & visits',
+  },
+];
+
 export default function BusinessProfileForm({ isEdit = false }: BusinessProfileFormProps) {
   const router = useRouter();
+  const [businessType, setBusinessType]   = useState<'product' | 'service'>('product');
   const [businessName, setBusinessName]   = useState('');
   const [businessPhone, setBusinessPhone] = useState('');
   const [pickupAddress, setPickupAddress] = useState('');
@@ -36,6 +52,7 @@ export default function BusinessProfileForm({ isEdit = false }: BusinessProfileF
   useEffect(() => {
     const p = getProfile();
     if (p) {
+      setBusinessType(p.businessType ?? 'product');
       setBusinessName(p.businessName);
       setBusinessPhone(p.businessPhone || '');
       setPickupAddress(p.pickupAddress || '');
@@ -51,9 +68,10 @@ export default function BusinessProfileForm({ isEdit = false }: BusinessProfileF
     setNameError('');
 
     const profile: BusinessProfile = {
+      businessType,
       businessName:  businessName.trim(),
       businessPhone: businessPhone.trim(),
-      pickupAddress: pickupAddress.trim(),
+      pickupAddress: businessType === 'product' ? pickupAddress.trim() : '',
       businessHours: businessHours.trim(),
     };
 
@@ -65,6 +83,55 @@ export default function BusinessProfileForm({ isEdit = false }: BusinessProfileF
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+
+      {/* Business type selector */}
+      <div>
+        <p style={{ ...labelStyle, marginBottom: 10 }}>Business Type</p>
+        <p style={{ fontFamily: 'var(--font-body)', fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+          This personalises your statuses and messages.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {TYPE_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setBusinessType(opt.value)}
+              style={{
+                padding: '16px 14px',
+                borderRadius: 16,
+                border: `2px solid ${businessType === opt.value ? 'var(--primary)' : 'var(--border)'}`,
+                background: businessType === opt.value ? 'var(--primary-soft)' : 'var(--surface)',
+                cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                transition: 'all var(--transition-fast)',
+              }}
+            >
+              <span style={{ fontSize: '2rem' }}>{opt.emoji}</span>
+              <span style={{
+                fontFamily: 'var(--font-display)', fontSize: '0.9375rem', fontWeight: 700,
+                color: businessType === opt.value ? 'var(--primary)' : 'var(--text)',
+              }}>
+                {opt.label}
+              </span>
+              <span style={{
+                fontFamily: 'var(--font-body)', fontSize: '0.75rem',
+                color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.4,
+              }}>
+                {opt.sub}
+              </span>
+            </button>
+          ))}
+        </div>
+        {businessType === 'service' && (
+          <p style={{
+            marginTop: 10, fontFamily: 'var(--font-body)', fontSize: '0.75rem',
+            color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6,
+          }}>
+            Electricians · Plumbers · Salons · Mechanics · Cleaners · Tutors · Installers
+          </p>
+        )}
+      </div>
+
       {/* Business Name */}
       <div>
         <label style={labelStyle}>Business Name *</label>
@@ -72,7 +139,7 @@ export default function BusinessProfileForm({ isEdit = false }: BusinessProfileF
           type="text"
           value={businessName}
           onChange={(e) => { setBusinessName(e.target.value); setNameError(''); }}
-          placeholder="Lebo's Linen Co"
+          placeholder={businessType === 'service' ? 'Bright Fix Electricals' : "Lebo's Linen Co"}
           style={{ ...inputStyle, borderColor: nameError ? 'var(--error)' : 'var(--border)' }}
         />
         {nameError && (
@@ -98,25 +165,27 @@ export default function BusinessProfileForm({ isEdit = false }: BusinessProfileF
         />
       </div>
 
-      {/* Pickup Address */}
-      <div>
-        <label style={labelStyle}>
-          Pickup Address
-          <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>(optional)</span>
-        </label>
-        <input
-          type="text"
-          value={pickupAddress}
-          onChange={(e) => setPickupAddress(e.target.value)}
-          placeholder="42 Main Rd, Sandton"
-          style={inputStyle}
-        />
-      </div>
+      {/* Pickup Address — product only */}
+      {businessType === 'product' && (
+        <div>
+          <label style={labelStyle}>
+            Pickup Address
+            <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={pickupAddress}
+            onChange={(e) => setPickupAddress(e.target.value)}
+            placeholder="42 Main Rd, Sandton"
+            style={inputStyle}
+          />
+        </div>
+      )}
 
       {/* Business Hours */}
       <div>
         <label style={labelStyle}>
-          Business Hours
+          {businessType === 'service' ? 'Operating Hours' : 'Business Hours'}
           <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>(optional)</span>
         </label>
         <input

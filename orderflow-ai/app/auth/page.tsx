@@ -133,16 +133,68 @@ export default function AuthPage() {
   if (checking) return null;
 
   return (
-    <div style={{
-      minHeight: '100dvh', background: 'var(--background)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 'var(--space-4)',
-    }}>
-      <div style={{
-        width: '100%', maxWidth: 'var(--max-width)',
-      }}>
-        {/* Logo / brand */}
-        <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
+    <div className="auth-outer">
+      <div className="auth-inner">
+
+        {/* ── Desktop brand panel (left side) ── */}
+        <div className="auth-brand-panel">
+          <div style={{ marginBottom: 48 }}>
+            <span style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '2rem', letterSpacing: '-0.02em',
+              display: 'flex', alignItems: 'center', gap: 8,
+              marginBottom: 8,
+            }}>
+              <BrandIcon size={40} />
+              <span>
+                <span style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>Order</span>
+                <span style={{ color: '#FFFFFF', fontWeight: 800 }}>Ping</span>
+              </span>
+            </span>
+            <p style={{
+              margin: 0, fontFamily: 'var(--font-body)', fontSize: '1rem',
+              color: 'rgba(255,255,255,0.7)', fontWeight: 400, lineHeight: 1.5,
+            }}>
+              Keep customers informed while they wait.
+            </p>
+          </div>
+
+          {[
+            { icon: '⚡', title: '5 seconds per update', body: 'Type a name, pick a status, send. Done.' },
+            { icon: '💬', title: 'WhatsApp, SMS & Email', body: 'One tap opens the right app with your message ready.' },
+            { icon: '🤖', title: 'AI writes it for you', body: 'Professional messages in your business name, every time.' },
+            { icon: '📊', title: 'Built for African businesses', body: 'Simple, fast, and works on any phone or computer.' },
+          ].map(({ icon, title, body }) => (
+            <div key={title} style={{ display: 'flex', gap: 16, marginBottom: 28 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 12,
+                background: 'rgba(255,255,255,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.375rem', flexShrink: 0,
+              }}>
+                {icon}
+              </div>
+              <div>
+                <p style={{ margin: '0 0 2px', fontFamily: 'var(--font-display)', fontSize: '0.9375rem', fontWeight: 700, color: '#FFFFFF' }}>
+                  {title}
+                </p>
+                <p style={{ margin: 0, fontFamily: 'var(--font-body)', fontSize: '0.875rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>
+                  {body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Form panel (right side on desktop, full-screen on mobile) ── */}
+        <div className="auth-form-panel" style={{
+          minHeight: '100dvh', background: 'var(--background)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 'var(--space-6)',
+        }}>
+        <div style={{ width: '100%', maxWidth: 440 }}>
+        {/* Logo / brand — mobile only (hidden on desktop via CSS) */}
+        <div className="auth-mobile-logo" style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
           <div style={{
             display: 'inline-flex', flexDirection: 'column',
             alignItems: 'center', gap: 4,
@@ -560,7 +612,10 @@ export default function AuthPage() {
           </button>
         </p>
         )}
-      </div>
+        </div>{/* end form max-width wrapper */}
+        </div>{/* end auth-form-panel */}
+
+      </div>{/* end auth-inner */}
     </div>
   );
 }

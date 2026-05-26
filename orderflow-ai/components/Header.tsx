@@ -27,7 +27,7 @@ export default function Header({ onSettingsClick, onRecentClick, showRecent, bus
 
   const pillStyle: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 5,
-    padding: '7px 13px',
+    padding: '8px 14px',
     borderRadius: 'var(--radius-full)',
     border: 'none',
     background: 'rgba(255,255,255,0.18)',
@@ -36,6 +36,7 @@ export default function Header({ onSettingsClick, onRecentClick, showRecent, bus
     fontFamily: 'var(--font-display)', fontSize: '0.8125rem', fontWeight: 600,
     backdropFilter: 'blur(8px)',
     transition: 'background var(--transition-fast)',
+    whiteSpace: 'nowrap' as const,
   };
 
   return (
@@ -43,9 +44,13 @@ export default function Header({ onSettingsClick, onRecentClick, showRecent, bus
       background: 'linear-gradient(145deg, #1A56E8 0%, #3B82F6 100%)',
       paddingTop: 'var(--safe-area-top)',
       paddingBottom: 'var(--space-8)',
+      position: 'sticky',
+      top: 0,
+      zIndex: 40,
     }}>
       <div style={{
-        maxWidth: 'var(--max-width)', margin: '0 auto',
+        maxWidth: 1200,
+        margin: '0 auto',
         padding: 'var(--space-4) var(--space-4) 0',
       }}>
         {/* Top row: brand + actions */}
@@ -61,7 +66,8 @@ export default function Header({ onSettingsClick, onRecentClick, showRecent, bus
             }}>
               <BrandIcon size={28} />
               <span>
-                <span style={{ color: 'rgba(255,255,255,0.80)', fontWeight: 600 }}>Order</span><span style={{ color: '#FFFFFF', fontWeight: 800 }}>Ping</span>
+                <span style={{ color: 'rgba(255,255,255,0.80)', fontWeight: 600 }}>Order</span>
+                <span style={{ color: '#FFFFFF', fontWeight: 800 }}>Ping</span>
               </span>
             </span>
             <span style={{
@@ -72,12 +78,22 @@ export default function Header({ onSettingsClick, onRecentClick, showRecent, bus
             </span>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={onRecentClick} style={pillStyle} aria-label="Recent messages">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* Recent toggle — hidden on desktop (sidebar always visible) */}
+            <button
+              onClick={onRecentClick}
+              style={pillStyle}
+              aria-label="Recent messages"
+              className="recent-toggle-mobile"
+            >
               {showRecent ? '✕ Close' : '🕒 Recent'}
             </button>
-            <button onClick={onSettingsClick} style={{ ...pillStyle, padding: '7px 11px' }} aria-label="Settings">
-              ⚙️
+            <button
+              onClick={onSettingsClick}
+              style={{ ...pillStyle, padding: '8px 12px' }}
+              aria-label="Settings"
+            >
+              ⚙️ <span style={{ marginLeft: 2 }}>Settings</span>
             </button>
           </div>
         </div>
@@ -94,7 +110,7 @@ export default function Header({ onSettingsClick, onRecentClick, showRecent, bus
           fontFamily: 'var(--font-body)', fontSize: '0.9375rem',
           color: 'rgba(255,255,255,0.70)', margin: 0, fontWeight: 400,
         }}>
-          {showRecent ? 'Recent messages' : 'Keep customers informed while they wait.'}
+          Keep customers informed while they wait.
         </p>
       </div>
     </header>

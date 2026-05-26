@@ -101,6 +101,206 @@
   --safe-area-bottom: env(safe-area-inset-bottom);
 }
 
+/* ── Responsive layout system ─────────────────────────────────────────────── */
+
+/* Main page container */
+.main-container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--space-4);
+  padding-bottom: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Top cards (stats, reminders) */
+.top-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Two-column content area */
+.content-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.form-col,
+.sidebar-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Mobile: hide via JS toggle */
+.mobile-hidden {
+  display: none !important;
+}
+
+/* Auth page desktop layout */
+.auth-outer {
+  min-height: 100dvh;
+  background: var(--background);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+.auth-inner {
+  width: 100%;
+  max-width: var(--max-width);
+}
+
+/* Setup page */
+.setup-content {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+  padding-bottom: 60px;
+}
+
+/* ── Tablet (768px+) ──────────────────────────────────────────────────────── */
+@media (min-width: 768px) {
+  .main-container {
+    max-width: 740px;
+    padding: var(--space-5) var(--space-6);
+  }
+  .auth-inner {
+    max-width: 480px;
+  }
+  .setup-content {
+    max-width: 560px;
+    padding: var(--space-8) var(--space-6);
+  }
+}
+
+/* ── Desktop (1024px+) ────────────────────────────────────────────────────── */
+@media (min-width: 1024px) {
+  :root {
+    --header-height: 72px;
+  }
+
+  .main-container {
+    max-width: 1200px;
+    padding: var(--space-6) var(--space-8);
+    padding-bottom: var(--space-12);
+    gap: var(--space-4);
+  }
+
+  .top-section {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  /* Stats card takes half the top on desktop */
+  .top-section > *:first-child {
+    flex: 0 0 220px;
+  }
+
+  .top-section > *:not(:first-child) {
+    flex: 1;
+    min-width: 260px;
+  }
+
+  .content-area {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 28px;
+  }
+
+  .form-col {
+    flex: 1;
+    min-width: 0;
+    max-width: 680px;
+  }
+
+  .sidebar-col {
+    width: 360px;
+    flex-shrink: 0;
+    position: sticky;
+    top: calc(var(--header-height) + 20px);
+    max-height: calc(100vh - var(--header-height) - 40px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  /* On desktop: always show both columns regardless of JS toggle */
+  .mobile-hidden {
+    display: flex !important;
+  }
+
+  /* Auth: split panel on desktop */
+  .auth-outer {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .auth-inner {
+    max-width: 100%;
+    display: flex;
+    min-height: 100dvh;
+  }
+
+  .auth-brand-panel {
+    flex: 1;
+    background: linear-gradient(145deg, #1A56E8 0%, #3B82F6 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 60px 56px;
+    min-width: 0;
+  }
+
+  .auth-form-panel {
+    width: 480px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 48px 48px;
+    overflow-y: auto;
+    background: var(--background);
+  }
+
+  /* Setup: centered card with max-width */
+  .setup-content {
+    max-width: 640px;
+    padding: var(--space-10) var(--space-8);
+  }
+}
+
+/* Auth brand panel — hidden on mobile */
+.auth-brand-panel {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .auth-brand-panel {
+    display: flex;
+  }
+
+  /* Hide the mobile-only Recent toggle in desktop header */
+  .recent-toggle-mobile {
+    display: none !important;
+  }
+
+  /* Hide mobile logo on auth page when brand panel is showing */
+  .auth-mobile-logo {
+    display: none !important;
+  }
+
+  /* Auth form panel: override mobile centering */
+  .auth-form-panel {
+    min-height: auto !important;
+    padding: 48px !important;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

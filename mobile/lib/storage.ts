@@ -6,6 +6,7 @@ export interface BusinessProfile {
   businessPhone: string;
   pickupAddress: string;
   businessHours: string;
+  businessType?: 'product' | 'service';
 }
 
 export interface RecentEntry {
@@ -57,6 +58,7 @@ export async function fetchProfileFromSupabase(): Promise<BusinessProfile | null
       businessPhone: data.business_phone ?? '',
       pickupAddress: data.pickup_address ?? '',
       businessHours: data.business_hours ?? '',
+      businessType:  (data.business_type === 'service' ? 'service' : 'product') as 'product' | 'service',
     };
 
     await saveProfile(profile);
@@ -77,6 +79,7 @@ export async function syncProfileToSupabase(profile: BusinessProfile): Promise<v
       business_phone: profile.businessPhone,
       pickup_address: profile.pickupAddress,
       business_hours: profile.businessHours,
+      business_type:  profile.businessType ?? 'product',
       updated_at:     new Date().toISOString(),
     });
   } catch {}
@@ -264,6 +267,8 @@ export interface FormDraft {
   dispatchDate:     string | null;
   readyNote:        string | null;
   preOrderNote:     string | null;
+  serviceNote:      string | null;
+  appointmentTime:  string;
   tone:             string;
   courier:          string | null;
   otherCourierName: string;

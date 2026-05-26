@@ -34,7 +34,7 @@ export default function SetupPage() {
         paddingTop: 'var(--safe-area-top)',
       }}>
         <div style={{
-          maxWidth: 'var(--max-width)', margin: '0 auto',
+          maxWidth: 640, margin: '0 auto',
           padding: '0 var(--space-4)', height: '100%',
           display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
         }}>
@@ -61,11 +61,7 @@ export default function SetupPage() {
         </div>
       </header>
 
-      <main style={{
-        maxWidth: 'var(--max-width)', margin: '0 auto',
-        padding: 'var(--space-6) var(--space-4)',
-        paddingBottom: 60,
-      }}>
+      <main className="setup-content">
         {!isEdit && (
           <p style={{
             fontFamily: 'var(--font-body)', fontSize: '0.9375rem',

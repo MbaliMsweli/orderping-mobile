@@ -22,7 +22,7 @@ interface ForgottenCustomer {
 }
 
 function getForgottenCustomers(recent: RecentEntry[]): ForgottenCustomer[] {
-  const PENDING = ['received', 'delay', 'pre-order'];
+  const PENDING = ['received', 'delay', 'pre-order', 'booking-confirmed', 'running-late', 'waiting-parts'];
   const byPhone: Record<string, RecentEntry> = {};
   for (const e of recent) {
     if (!byPhone[e.phoneNumber] || new Date(e.timestamp) > new Date(byPhone[e.phoneNumber].timestamp))
@@ -119,22 +119,90 @@ const STATUSES = [
   { id: 'ready',      label: 'Ready',       emoji: '📍', color: Colors.ready },
 ] as const;
 
+const SERVICE_STATUSES = [
+  { id: 'booking-confirmed', label: 'Confirmed',    emoji: '✅', color: '#2BA784' },
+  { id: 'on-the-way',        label: 'On the Way',   emoji: '🚗', color: '#3B82F6' },
+  { id: 'running-late',      label: 'Running Late', emoji: '⏰', color: '#E8A435' },
+  { id: 'arrived',           label: 'Arrived',      emoji: '📍', color: '#16A34A' },
+  { id: 'completed',         label: 'Completed',    emoji: '🎉', color: '#8B5CF6' },
+  { id: 'rescheduled',       label: 'Rescheduled',  emoji: '📅', color: '#6B7280' },
+  { id: 'waiting-parts',     label: 'Waiting Parts',emoji: '🔧', color: '#D4A843' },
+  { id: 'follow-up',         label: 'Follow-up',    emoji: '📞', color: '#EC4899' },
+];
+
+const SERVICE_CONFIRMED_OPTIONS = [
+  { id: 'Your appointment has been confirmed and our technician will be there on time',   icon: '✅', label: 'Confirmed on time' },
+  { id: 'Your booking is confirmed — just a reminder of the appointment details',          icon: '📅', label: 'Reminder confirmation' },
+  { id: 'Confirmed and we have everything we need to complete the job',                    icon: '🔧', label: 'All prepared' },
+];
+const SERVICE_ON_THE_WAY_OPTIONS = [
+  { id: 'Our technician is on the way and should arrive shortly',   icon: '🚗', label: 'On the way now' },
+  { id: 'Our team has just left and is heading to you',              icon: '📍', label: 'Just left' },
+  { id: 'Almost there — about 10 to 15 minutes away',               icon: '⏱️', label: '10–15 min away' },
+];
+const SERVICE_LATE_OPTIONS = [
+  { id: 'Running behind due to traffic but still coming today',            icon: '🚦', label: 'Traffic delay' },
+  { id: 'Running a little late due to the previous job taking longer',     icon: '🔧', label: 'Previous job overran' },
+  { id: 'Slightly delayed due to weather conditions',                       icon: '🌧️', label: 'Weather delay' },
+];
+const SERVICE_ARRIVED_OPTIONS = [
+  { id: 'Technician has arrived on site and is getting started',   icon: '🏠', label: 'Arrived, getting started' },
+  { id: 'We have arrived and are assessing the situation',          icon: '🔍', label: 'Arrived, assessing' },
+  { id: 'Arrived and everything looks straightforward',             icon: '✅', label: 'Arrived, looks good' },
+];
+const SERVICE_COMPLETED_OPTIONS = [
+  { id: 'Job is complete and everything has been sorted',                    icon: '✅', label: 'All done' },
+  { id: 'Service completed successfully — no further action needed',         icon: '🎉', label: 'Completed, all good' },
+  { id: 'Service completed and a follow-up visit may be needed',             icon: '📞', label: 'Done, follow-up needed' },
+];
+const SERVICE_RESCHEDULED_OPTIONS = [
+  { id: 'Appointment rescheduled due to unforeseen circumstances',   icon: '📅', label: 'Unforeseen circumstances' },
+  { id: 'We need to reschedule due to technician availability',       icon: '👤', label: 'Technician unavailable' },
+  { id: 'Rescheduling as the required parts are not yet available',   icon: '🔧', label: 'Parts not yet available' },
+];
+const SERVICE_PARTS_OPTIONS = [
+  { id: 'Waiting for a part to arrive before we can complete the job',              icon: '🔧', label: 'Part on order' },
+  { id: 'Special part needs to be sourced — this may take a day or two',            icon: '📦', label: 'Sourcing special part' },
+  { id: 'Materials have been delayed but we will update you as soon as they arrive', icon: '⏳', label: 'Materials delayed' },
+];
+const SERVICE_FOLLOWUP_OPTIONS = [
+  { id: 'A follow-up visit has been scheduled to check on the work done',   icon: '📅', label: 'Follow-up booked' },
+  { id: 'Checking in to see how everything is going after our visit',        icon: '👋', label: 'Checking in' },
+  { id: 'Following up to confirm the issue has been fully resolved',         icon: '✅', label: 'Confirming resolved' },
+];
+
 const STATUS_BADGES: Record<string, { label: string; color: string }> = {
-  received:    { label: 'Received',   color: Colors.received },
-  delay:       { label: 'Delayed',    color: Colors.delay },
-  dispatched:  { label: 'Dispatched', color: Colors.dispatched },
-  ready:       { label: 'Ready',      color: Colors.ready },
-  'pre-order': { label: 'Pre-order',  color: Colors.accent },
+  // Product
+  received:           { label: 'Received',     color: Colors.received },
+  delay:              { label: 'Delayed',       color: Colors.delay },
+  dispatched:         { label: 'Dispatched',    color: Colors.dispatched },
+  ready:              { label: 'Ready',         color: Colors.ready },
+  'pre-order':        { label: 'Pre-order',     color: Colors.accent },
+  // Service
+  'booking-confirmed':{ label: 'Confirmed',     color: '#2BA784' },
+  'on-the-way':       { label: 'On the Way',    color: '#3B82F6' },
+  'running-late':     { label: 'Running Late',  color: '#E8A435' },
+  'arrived':          { label: 'Arrived',       color: '#16A34A' },
+  'completed':        { label: 'Completed',     color: '#8B5CF6' },
+  'rescheduled':      { label: 'Rescheduled',   color: '#6B7280' },
+  'waiting-parts':    { label: 'Waiting Parts', color: '#D4A843' },
+  'follow-up':        { label: 'Follow-up',     color: '#EC4899' },
 };
 
-const RECENT_FILTERS = ['all', 'received', 'delay', 'dispatched', 'ready', 'pre-order'] as const;
+const PRODUCT_FILTERS = ['all', 'received', 'delay', 'dispatched', 'ready', 'pre-order'] as const;
+const SERVICE_FILTERS  = ['all', 'booking-confirmed', 'on-the-way', 'running-late', 'arrived', 'completed', 'rescheduled', 'waiting-parts', 'follow-up'] as const;
 const FILTER_LABELS: Record<string, string> = {
-  all: 'All', received: 'Received', delay: 'Delayed',
-  dispatched: 'Dispatched', ready: 'Ready', 'pre-order': 'Pre-order',
+  all: 'All',
+  // Product
+  received: 'Received', delay: 'Delayed', dispatched: 'Dispatched', ready: 'Ready', 'pre-order': 'Pre-order',
+  // Service
+  'booking-confirmed': 'Confirmed', 'on-the-way': 'On the Way', 'running-late': 'Running Late',
+  'arrived': 'Arrived', 'completed': 'Completed', 'rescheduled': 'Rescheduled',
+  'waiting-parts': 'Waiting Parts', 'follow-up': 'Follow-up',
 };
 const CHANNEL_ICONS: Record<string, string> = { whatsapp: '💬', sms: '📱', email: '✉️', copy: '📋' };
 
-type Tone    = 'friendly' | 'professional' | 'apologetic';
+type Tone    = 'friendly' | 'professional' | 'apologetic' | 'reassuring';
 type Channel = 'whatsapp' | 'sms' | 'email' | 'copy';
 
 function getGreeting(name: string): string {
@@ -171,10 +239,10 @@ function detectFrustration(phone: string, recent: RecentEntry[]): FrustrationRes
   const now  = Date.now();
   const latest = history[0];
   const oldest = history[history.length - 1];
-  const delays = history.filter(e => e.status === 'delay');
+  const delays = history.filter(e => e.status === 'delay' || e.status === 'running-late');
   const hoursSinceLatest = (now - new Date(latest.timestamp).getTime()) / 3600000;
   const hoursSinceFirst  = (now - new Date(oldest.timestamp).getTime()) / 3600000;
-  const pendingStatuses  = ['received', 'delay', 'pre-order'];
+  const pendingStatuses  = ['received', 'delay', 'pre-order', 'booking-confirmed', 'running-late', 'waiting-parts'];
 
   if (delays.length >= 3) { score += 50; signals.push(`${delays.length} delay updates`); }
   else if (delays.length === 2) { score += 35; signals.push('2 delay updates'); }
@@ -231,6 +299,8 @@ export default function MainScreen() {
   const [dispatchDate, setDispatchDate] = useState<string | null>(null);
   const [readyNote, setReadyNote]       = useState<string | null>(null);
   const [preOrderNote, setPreOrderNote] = useState<string | null>(null);
+  const [serviceNote, setServiceNote]   = useState<string | null>(null);
+  const [appointmentTime, setAppointmentTime] = useState('');
   const [tone, setTone]                 = useState<Tone>('friendly');
   const [message, setMessage]           = useState('');
   const [generating, setGenerating]     = useState(false);
@@ -259,12 +329,20 @@ export default function MainScreen() {
   const [frustration, setFrustration] = useState<FrustrationResult>({ level: 'none', signals: [], context: '' });
   const toneAutoSet = useRef(false);
 
+  // Guest mode
+  const [isGuest, setIsGuest] = useState(false);
+  const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
+
   useEffect(() => {
     (async () => {
-      const p = await getProfile();
+      const [p, { data: { user } }] = await Promise.all([
+        getProfile(),
+        supabase.auth.getUser(),
+      ]);
       if (!p) { router.replace('/(setup)'); return; }
       setProfile(p);
       setGreeting(getGreeting(p.businessName || 'there'));
+      setIsGuest(user?.is_anonymous ?? false);
 
       const recent = await fetchAndMergeRecent();
       const today = new Date().toDateString();
@@ -305,6 +383,8 @@ export default function MainScreen() {
         if (draft.dispatchDate)     setDispatchDate(draft.dispatchDate);
         if (draft.readyNote)        setReadyNote(draft.readyNote);
         if (draft.preOrderNote)     setPreOrderNote(draft.preOrderNote);
+        if (draft.serviceNote)      setServiceNote(draft.serviceNote);
+        if (draft.appointmentTime)  setAppointmentTime(draft.appointmentTime);
         if (draft.tone)             setTone(draft.tone as Tone);
         if (draft.courier)          setCourier(draft.courier);
         if (draft.otherCourierName) setOtherCourierName(draft.otherCourierName);
@@ -336,10 +416,10 @@ export default function MainScreen() {
   useEffect(() => {
     if (!customerName && !phoneNumber && !status && !message) return;
     const t = setTimeout(() => {
-      saveDraft({ customerName, phoneNumber, email, status, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, tone, courier, otherCourierName, waybill, message });
+      saveDraft({ customerName, phoneNumber, email, status, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, serviceNote, appointmentTime, tone, courier, otherCourierName, waybill, message });
     }, 400);
     return () => clearTimeout(t);
-  }, [customerName, phoneNumber, email, status, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, tone, courier, otherCourierName, waybill, message]);
+  }, [customerName, phoneNumber, email, status, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, serviceNote, appointmentTime, tone, courier, otherCourierName, waybill, message]);
 
   // Remember the last courier used across sessions
   useEffect(() => {
@@ -365,13 +445,19 @@ export default function MainScreen() {
   const clearStatusNotes = () => {
     setReceivedNote(null); setDelayReason(null);
     setDispatchDate(null); setReadyNote(null); setPreOrderNote(null);
+    setServiceNote(null);
   };
 
   const handleStatusPress = (id: string) => {
     setStatus(id);
     clearStatusNotes();
+    // Product tones
     if (id === 'delay' || id === 'pre-order') setTone('apologetic');
     else if (id === 'received' || id === 'ready') setTone('friendly');
+    // Service tones
+    else if (id === 'running-late' || id === 'rescheduled' || id === 'waiting-parts') setTone('apologetic');
+    else if (id === 'on-the-way' || id === 'arrived') setTone('reassuring');
+    else if (id === 'booking-confirmed' || id === 'completed' || id === 'follow-up') setTone('friendly');
   };
 
   const handleExtract = async () => {
@@ -414,20 +500,25 @@ export default function MainScreen() {
           'Authorization': `Bearer ${session?.access_token ?? ''}`,
         },
         body: JSON.stringify({
+          businessType:        profile?.businessType ?? 'product',
           customerName:        customerName.trim(),
           status,
           tone,
           businessName:        profile?.businessName ?? '',
+          // Product-only fields
           receivedNote,
           dispatchDate,
-          courierName:         effectiveCourierName,
-          courierDeliveryTime: selectedCourier?.deliveryTime ?? null,
-          waybillNumber:       waybill.trim() || null,
+          courierName:         (profile?.businessType ?? 'product') === 'product' ? effectiveCourierName : null,
+          courierDeliveryTime: (profile?.businessType ?? 'product') === 'product' ? (selectedCourier?.deliveryTime ?? null) : null,
+          waybillNumber:       (profile?.businessType ?? 'product') === 'product' ? (waybill.trim() || null) : null,
           delayReason,
           readyNote,
           preOrderNote,
           pickupAddress:      status === 'ready' ? (profile?.pickupAddress || null) : null,
-          businessHours:      status === 'ready' ? (profile?.businessHours || null) : null,
+          businessHours:      (status === 'ready' || status === 'booking-confirmed') ? (profile?.businessHours || null) : null,
+          // Service-only fields
+          appointmentTime:    appointmentTime.trim() || null,
+          serviceNote,
           frustrationContext: frustration.context || null,
         }),
       });
@@ -469,7 +560,8 @@ export default function MainScreen() {
 
   const handleClear = () => {
     setOrderText(''); setCustomerName(''); setPhoneNumber(''); setEmail('');
-    setCourier(null); setOtherCourierName(''); setWaybill(''); setStatus(null); setMessage(''); setTone('friendly');
+    setCourier(null); setOtherCourierName(''); setWaybill('');
+    setAppointmentTime(''); setStatus(null); setMessage(''); setTone('friendly');
     clearStatusNotes();
     clearDraft();
   };
@@ -488,6 +580,7 @@ export default function MainScreen() {
     setStatus(null);
     setReceivedNote(null); setDelayReason(null);
     setDispatchDate(null); setReadyNote(null); setPreOrderNote(null);
+    setServiceNote(null); setAppointmentTime('');
     setCourier(null); setOtherCourierName(''); setWaybill('');
     setTone('friendly');
     setMessage('');
@@ -573,7 +666,7 @@ export default function MainScreen() {
 
           {/* Filter pills */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterContent} style={s.filterScroll}>
-            {RECENT_FILTERS.map(f => (
+            {(profile?.businessType === 'service' ? SERVICE_FILTERS : PRODUCT_FILTERS).map(f => (
               <TouchableOpacity
                 key={f}
                 style={[s.filterPill, recentFilter === f && s.filterPillActive]}
@@ -686,6 +779,24 @@ export default function MainScreen() {
       <ScrollView ref={scrollRef} style={s.root} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {Hero}
 
+        {/* Guest banner */}
+        {isGuest && !guestBannerDismissed && (
+          <View style={s.guestBanner}>
+            <View style={s.guestBannerBody}>
+              <Text style={s.guestBannerText}>Guest mode — data saved on this device only.</Text>
+              <TouchableOpacity onPress={async () => {
+                await supabase.auth.signOut();
+                router.replace('/(auth)');
+              }}>
+                <Text style={s.guestBannerLink}>Sign up →</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity onPress={() => setGuestBannerDismissed(true)} style={s.guestBannerClose}>
+              <Text style={s.weekCardDismiss}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Stats */}
         <View style={s.statsCard}>
           <View style={s.statsRow}>
@@ -779,15 +890,17 @@ export default function MainScreen() {
           )
         )}
 
-        {/* Paste Order */}
+        {/* Paste Order / Booking */}
         <View style={s.card}>
-          <Text style={s.sectionLabel}>PASTE ORDER</Text>
+          <Text style={s.sectionLabel}>{profile?.businessType === 'service' ? 'PASTE BOOKING' : 'PASTE ORDER'}</Text>
           <TextInput
             style={s.pasteInput}
             value={orderText}
             onChangeText={setOrderText}
             multiline
-            placeholder={"Paste the full order here — name, phone, email, items...\n\nThe app will extract everything automatically."}
+            placeholder={profile?.businessType === 'service'
+              ? 'Paste the booking here — name, phone, appointment details...\n\nThe app will extract everything automatically.'
+              : 'Paste the full order here — name, phone, email, items...\n\nThe app will extract everything automatically.'}
             placeholderTextColor={Colors.textLight}
             textAlignVertical="top"
           />
@@ -851,79 +964,115 @@ export default function MainScreen() {
           </View>
         )}
 
-        {/* Courier */}
-        <View style={s.card}>
-          <Text style={s.sectionLabel}>COURIER</Text>
-          <Text style={s.cardHint}>Select the courier you're using for this order</Text>
-          <View style={s.pillRow}>
-            {COURIERS.map(c => (
+        {/* Courier (product) / Appointment time (service) */}
+        {(profile?.businessType ?? 'product') === 'product' ? (
+          <View style={s.card}>
+            <Text style={s.sectionLabel}>COURIER</Text>
+            <Text style={s.cardHint}>Select the courier you're using for this order</Text>
+            <View style={s.pillRow}>
+              {COURIERS.map(c => (
+                <TouchableOpacity
+                  key={c.name}
+                  style={[s.courierPill, courier === c.name && s.courierPillActive]}
+                  onPress={() => setCourier(courier === c.name ? null : c.name)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[s.courierPillText, courier === c.name && s.courierPillTextActive]}>{c.name}</Text>
+                </TouchableOpacity>
+              ))}
               <TouchableOpacity
-                key={c.name}
-                style={[s.courierPill, courier === c.name && s.courierPillActive]}
-                onPress={() => setCourier(courier === c.name ? null : c.name)}
+                style={[s.courierPill, courier === 'other' && s.courierPillActive]}
+                onPress={() => setCourier(courier === 'other' ? null : 'other')}
                 activeOpacity={0.8}
               >
-                <Text style={[s.courierPillText, courier === c.name && s.courierPillTextActive]}>{c.name}</Text>
+                <Text style={[s.courierPillText, courier === 'other' && s.courierPillTextActive]}>Other</Text>
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={[s.courierPill, courier === 'other' && s.courierPillActive]}
-              onPress={() => setCourier(courier === 'other' ? null : 'other')}
-              activeOpacity={0.8}
-            >
-              <Text style={[s.courierPillText, courier === 'other' && s.courierPillTextActive]}>Other</Text>
-            </TouchableOpacity>
-          </View>
-          {courier === 'other' && (
+            </View>
+            {courier === 'other' && (
+              <TextInput
+                style={[s.input, { marginTop: 12 }]}
+                value={otherCourierName}
+                onChangeText={setOtherCourierName}
+                placeholder="Type courier name…"
+                placeholderTextColor={Colors.textMuted}
+                autoCapitalize="words"
+              />
+            )}
             <TextInput
               style={[s.input, { marginTop: 12 }]}
-              value={otherCourierName}
-              onChangeText={setOtherCourierName}
-              placeholder="Type courier name…"
-              placeholderTextColor={Colors.textMuted}
+              value={waybill}
+              onChangeText={setWaybill}
+              placeholder="Waybill / tracking number (optional)"
+              placeholderTextColor={Colors.textLight}
+              autoCapitalize="characters"
+            />
+          </View>
+        ) : (
+          <View style={s.card}>
+            <Text style={s.sectionLabel}>APPOINTMENT</Text>
+            <Text style={s.cardHint}>When is the appointment? (optional)</Text>
+            <TextInput
+              style={s.input}
+              value={appointmentTime}
+              onChangeText={setAppointmentTime}
+              placeholder="e.g. Tomorrow at 10:00 AM"
+              placeholderTextColor={Colors.textLight}
               autoCapitalize="words"
             />
-          )}
-          <TextInput
-            style={[s.input, { marginTop: 12 }]}
-            value={waybill}
-            onChangeText={setWaybill}
-            placeholder="Waybill / tracking number (optional)"
-            placeholderTextColor={Colors.textLight}
-            autoCapitalize="characters"
-          />
-        </View>
+          </View>
+        )}
 
         {/* Status */}
         <View style={s.card}>
           <Text style={s.sectionLabel}>STATUS</Text>
-          <View style={s.statusGrid}>
-            {STATUSES.map(st => {
-              const active = status === st.id;
-              return (
-                <TouchableOpacity
-                  key={st.id}
-                  style={[s.statusBtn, active && { borderColor: st.color, backgroundColor: st.color + '15' }]}
-                  onPress={() => handleStatusPress(st.id)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={s.statusEmoji}>{st.emoji}</Text>
-                  <Text style={[s.statusLabel, active && { color: st.color, fontWeight: '700' }]}>{st.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <TouchableOpacity
-            style={[s.preOrderBtn, status === 'pre-order' && s.preOrderBtnActive]}
-            onPress={() => handleStatusPress('pre-order')}
-            activeOpacity={0.8}
-          >
-            <Text style={s.preOrderEmoji}>🗓️</Text>
-            <Text style={[s.preOrderLabel, status === 'pre-order' && { color: Colors.accent, fontWeight: '700' }]}>Pre-order</Text>
-          </TouchableOpacity>
+          {(profile?.businessType ?? 'product') === 'product' ? (
+            <>
+              <View style={s.statusGrid}>
+                {STATUSES.map(st => {
+                  const active = status === st.id;
+                  return (
+                    <TouchableOpacity
+                      key={st.id}
+                      style={[s.statusBtn, active && { borderColor: st.color, backgroundColor: st.color + '15' }]}
+                      onPress={() => handleStatusPress(st.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={s.statusEmoji}>{st.emoji}</Text>
+                      <Text style={[s.statusLabel, active && { color: st.color, fontWeight: '700' }]}>{st.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TouchableOpacity
+                style={[s.preOrderBtn, status === 'pre-order' && s.preOrderBtnActive]}
+                onPress={() => handleStatusPress('pre-order')}
+                activeOpacity={0.8}
+              >
+                <Text style={s.preOrderEmoji}>🗓️</Text>
+                <Text style={[s.preOrderLabel, status === 'pre-order' && { color: Colors.accent, fontWeight: '700' }]}>Pre-order</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <View style={s.statusGrid}>
+              {SERVICE_STATUSES.map(st => {
+                const active = status === st.id;
+                return (
+                  <TouchableOpacity
+                    key={st.id}
+                    style={[s.statusBtn, active && { borderColor: st.color, backgroundColor: st.color + '15' }]}
+                    onPress={() => handleStatusPress(st.id)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={s.statusEmoji}>{st.emoji}</Text>
+                    <Text style={[s.statusLabel, active && { color: st.color, fontWeight: '700' }]}>{st.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
-        {/* Status note pickers */}
+        {/* Status note pickers — product */}
         {status === 'received' && (
           <StatusNotePicker heading="What type of order?" options={RECEIVED_OPTIONS}
             selected={receivedNote} onSelect={setReceivedNote} activeColor="#8B5CF6"
@@ -950,11 +1099,56 @@ export default function MainScreen() {
             statusKey="pre-order" customPlaceholder="e.g. available end of month..." />
         )}
 
+        {/* Status note pickers — service */}
+        {status === 'booking-confirmed' && (
+          <StatusNotePicker heading="Booking detail" options={SERVICE_CONFIRMED_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#2BA784"
+            statusKey="booking-confirmed" customPlaceholder="e.g. bring your ID..." />
+        )}
+        {status === 'on-the-way' && (
+          <StatusNotePicker heading="How far away?" options={SERVICE_ON_THE_WAY_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#3B82F6"
+            statusKey="on-the-way" customPlaceholder="e.g. 30 minutes away..." />
+        )}
+        {status === 'running-late' && (
+          <StatusNotePicker heading="Reason for delay?" options={SERVICE_LATE_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#E8A435"
+            statusKey="running-late" customPlaceholder="e.g. stuck in load shedding..." />
+        )}
+        {status === 'arrived' && (
+          <StatusNotePicker heading="On-site detail" options={SERVICE_ARRIVED_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#16A34A"
+            statusKey="arrived" customPlaceholder="e.g. parking at gate..." />
+        )}
+        {status === 'completed' && (
+          <StatusNotePicker heading="Job outcome" options={SERVICE_COMPLETED_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#8B5CF6"
+            statusKey="completed" customPlaceholder="e.g. invoice sent..." />
+        )}
+        {status === 'rescheduled' && (
+          <StatusNotePicker heading="Reason for reschedule" options={SERVICE_RESCHEDULED_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#6B7280"
+            statusKey="rescheduled" customPlaceholder="e.g. new date is Monday..." />
+        )}
+        {status === 'waiting-parts' && (
+          <StatusNotePicker heading="What are you waiting for?" options={SERVICE_PARTS_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#D4A843"
+            statusKey="waiting-parts" customPlaceholder="e.g. part arrives Thursday..." />
+        )}
+        {status === 'follow-up' && (
+          <StatusNotePicker heading="Follow-up reason" options={SERVICE_FOLLOWUP_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#EC4899"
+            statusKey="follow-up" customPlaceholder="e.g. checking on the repair..." />
+        )}
+
         {/* Tone */}
         <View style={s.card}>
           <Text style={s.sectionLabel}>TONE</Text>
           <View style={s.toneRow}>
-            {(['friendly', 'professional', 'apologetic'] as Tone[]).map(t => (
+            {((profile?.businessType ?? 'product') === 'service'
+              ? ['friendly', 'professional', 'apologetic', 'reassuring'] as Tone[]
+              : ['friendly', 'professional', 'apologetic'] as Tone[]
+            ).map(t => (
               <TouchableOpacity
                 key={t}
                 style={[s.tonePill, tone === t && s.tonePillActive]}
@@ -1165,6 +1359,11 @@ const s = StyleSheet.create({
   statsLabel:  { fontSize: 13, color: Colors.primary, fontWeight: '600', letterSpacing: 0.2, marginTop: 4, opacity: 0.7 },
 
   // Weekly report card
+  guestBanner:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderWidth: 1.5, borderColor: '#FDE68A', borderRadius: 14, marginHorizontal: 16, marginTop: 16, padding: 14 },
+  guestBannerBody: { flex: 1 },
+  guestBannerText: { fontSize: 13, color: '#92400E', marginBottom: 4 },
+  guestBannerLink: { fontSize: 13, fontWeight: '700', color: '#D97706' },
+  guestBannerClose: { paddingLeft: 12 },
   weekCard:        { backgroundColor: '#EFF6FF', borderWidth: 1.5, borderColor: '#BFDBFE', borderRadius: 18, marginHorizontal: 16, marginTop: 16, padding: 18 },
   weekCardHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   weekCardTitle:   { fontSize: 16, fontWeight: '700', color: '#1E40AF', letterSpacing: -0.1 },

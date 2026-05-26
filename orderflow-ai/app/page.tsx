@@ -534,13 +534,12 @@ export default function Home() {
         businessName={profile.businessName}
       />
 
-      <main ref={formRef} style={{
-        maxWidth: 'var(--max-width)', margin: '0 auto',
-        padding: 'var(--space-4)', paddingBottom: 80,
-        display: 'flex', flexDirection: 'column', gap: 'var(--space-1)',
-      }}>
+      <main ref={formRef} className="main-container">
 
-        {/* ── Stats card — always at top ── */}
+        {/* ── Top section: stats + engagement cards ── */}
+        <div className="top-section">
+
+        {/* ── Stats card ── */}
         <div style={{
           background: 'linear-gradient(135deg, #EEF4FF 0%, #F8FAFF 100%)',
           borderRadius: 16,
@@ -742,15 +741,13 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Recent panel (full view, replaces form) ── */}
-        {showRecent && (
-          <div style={{ marginTop: 8 }}>
-            <RecentList key={recentKey} onSelect={handleRecentSelect} businessName={profile.businessName} />
-          </div>
-        )}
+        </div>{/* end top-section */}
 
-        {/* ── Main form ── */}
-        {!showRecent && <>
+        {/* ── Two-column content area ── */}
+        <div className="content-area">
+
+          {/* ── Main form column ── */}
+          <div className={`form-col${showRecent ? ' mobile-hidden' : ''}`}>
 
         {/* Order paste section */}
         <div style={{
@@ -1029,7 +1026,24 @@ export default function Home() {
           </>
         )}
 
-        </>}
+          </div>{/* end form-col */}
+
+          {/* ── Recent sidebar ── */}
+          <div className={`sidebar-col${!showRecent ? ' mobile-hidden' : ''}`}>
+            {/* Sidebar header — desktop only */}
+            <div style={{
+              background: 'var(--surface)',
+              borderRadius: 20,
+              border: '1.5px solid var(--border)',
+              padding: '14px 18px',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
+            }}>
+              <RecentList key={recentKey} onSelect={handleRecentSelect} businessName={profile.businessName} />
+            </div>
+          </div>{/* end sidebar-col */}
+
+        </div>{/* end content-area */}
+
       </main>
     </div>
   );

@@ -23,9 +23,10 @@ export default function Index() {
       }
 
       if (cachedProfile) {
-        // Navigate immediately from cache; sync to Supabase in the background
-        syncProfileToSupabase(cachedProfile);
+        if (!user.is_anonymous) syncProfileToSupabase(cachedProfile);
         router.replace('/(main)');
+      } else if (user.is_anonymous) {
+        router.replace('/(setup)');
       } else {
         const remoteProfile = await fetchProfileFromSupabase();
         router.replace(remoteProfile ? '/(main)' : '/(setup)');
