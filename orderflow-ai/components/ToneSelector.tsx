@@ -1,19 +1,23 @@
 'use client';
 
-type Tone = 'friendly' | 'professional' | 'apologetic';
+export type Tone = 'friendly' | 'professional' | 'apologetic' | 'reassuring';
 
 interface ToneSelectorProps {
   selected: Tone;
   onSelect: (t: Tone) => void;
+  businessType?: 'product' | 'service';
 }
 
-const tones: { id: Tone; label: string; sub: string }[] = [
-  { id: 'friendly',     label: 'Friendly',      sub: '😊 Warm' },
-  { id: 'professional', label: 'Professional',   sub: '👔 Formal' },
-  { id: 'apologetic',   label: 'Apologetic',     sub: '🙏 Sorry' },
+const allTones: { id: Tone; label: string }[] = [
+  { id: 'friendly',     label: 'Friendly' },
+  { id: 'professional', label: 'Professional' },
+  { id: 'apologetic',   label: 'Apologetic' },
+  { id: 'reassuring',   label: 'Reassuring' },
 ];
 
-export default function ToneSelector({ selected, onSelect }: ToneSelectorProps) {
+export default function ToneSelector({ selected, onSelect, businessType = 'product' }: ToneSelectorProps) {
+  const tones = businessType === 'service' ? allTones : allTones.slice(0, 3);
+
   return (
     <div style={{ marginTop: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
       <p style={{

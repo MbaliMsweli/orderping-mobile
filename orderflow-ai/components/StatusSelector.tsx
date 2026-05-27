@@ -1,34 +1,50 @@
 'use client';
 
-import { PackageCheck, Clock, Truck, MapPin, CalendarClock } from 'lucide-react';
+import {
+  PackageCheck, Clock, Truck, MapPin, CalendarClock,
+  CalendarCheck, Navigation2, CheckCircle2, CalendarX, Wrench, Phone,
+} from 'lucide-react';
 
-type Status = 'received' | 'delay' | 'dispatched' | 'ready' | 'pre-order';
+export type Status =
+  | 'received' | 'delay' | 'dispatched' | 'ready' | 'pre-order'
+  | 'booking-confirmed' | 'on-the-way' | 'running-late' | 'arrived'
+  | 'completed' | 'rescheduled' | 'waiting-parts' | 'follow-up';
 
 interface StatusSelectorProps {
   selected: Status | null;
   onSelect: (s: Status) => void;
   error?: string;
+  businessType?: 'product' | 'service';
 }
 
-const gridStatuses: {
-  id: Status;
-  label: string;
-  Icon: React.ElementType;
-  color: string;
-}[] = [
+const productStatuses: { id: Status; label: string; Icon: React.ElementType; color: string }[] = [
   { id: 'received',   label: 'Received',   Icon: PackageCheck, color: '#8B5CF6' },
   { id: 'delay',      label: 'Delay',       Icon: Clock,        color: '#FBBF24' },
   { id: 'dispatched', label: 'Dispatching', Icon: Truck,        color: '#3B82F6' },
   { id: 'ready',      label: 'Ready',       Icon: MapPin,       color: '#22C55E' },
 ];
 
+const serviceStatuses: { id: Status; label: string; Icon: React.ElementType; color: string }[] = [
+  { id: 'booking-confirmed', label: 'Confirmed',     Icon: CalendarCheck, color: '#2BA784' },
+  { id: 'on-the-way',        label: 'On the Way',    Icon: Navigation2,   color: '#3B82F6' },
+  { id: 'running-late',      label: 'Running Late',  Icon: Clock,         color: '#E8A435' },
+  { id: 'arrived',           label: 'Arrived',       Icon: MapPin,        color: '#16A34A' },
+  { id: 'completed',         label: 'Completed',     Icon: CheckCircle2,  color: '#8B5CF6' },
+  { id: 'rescheduled',       label: 'Rescheduled',   Icon: CalendarX,     color: '#6B7280' },
+  { id: 'waiting-parts',     label: 'Waiting Parts', Icon: Wrench,        color: '#D4A843' },
+  { id: 'follow-up',         label: 'Follow-up',     Icon: Phone,         color: '#EC4899' },
+];
+
 const PRE_ORDER_COLOR = '#6366F1';
 
-export default function StatusSelector({ selected, onSelect, error }: StatusSelectorProps) {
+export default function StatusSelector({ selected, onSelect, error, businessType = 'product' }: StatusSelectorProps) {
+  const isService = businessType === 'service';
+  const statuses = isService ? serviceStatuses : productStatuses;
+
   return (
     <div style={{ marginBottom: 'var(--space-4)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {gridStatuses.map(({ id, label, Icon, color }) => {
+        {statuses.map(({ id, label, Icon, color }) => {
           const isActive = selected === id;
           return (
             <button
@@ -63,8 +79,8 @@ export default function StatusSelector({ selected, onSelect, error }: StatusSele
         })}
       </div>
 
-      {/* Pre-order — full width below the 2x2 grid */}
-      {(() => {
+      {/* Pre-order — product only, full width below the 2x2 grid */}
+      {!isService && (() => {
         const isActive = selected === 'pre-order';
         return (
           <button

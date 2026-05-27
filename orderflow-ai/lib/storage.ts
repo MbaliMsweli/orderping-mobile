@@ -287,6 +287,8 @@ export interface FormDraft {
   dispatchDate:     string | null;
   readyNote:        string | null;
   preOrderNote:     string | null;
+  serviceNote:      string | null;
+  appointmentTime:  string;
   tone:             string;
   courier:          string | null;
   customCourierName: string;

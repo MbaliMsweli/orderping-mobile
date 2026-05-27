@@ -8,6 +8,7 @@ import { buildWhatsAppLink, buildSMSLink, buildEmailLink } from '@/lib/deep-link
 interface RecentListProps {
   onSelect: (name: string, phone: string, email: string, courier?: string | null) => void;
   businessName?: string;
+  businessType?: 'product' | 'service';
 }
 
 function relativeTime(iso: string): string {
@@ -21,12 +22,23 @@ function relativeTime(iso: string): string {
 }
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  received:    { label: 'Received',   color: '#8B5CF6', bg: '#EDE9FE' },
-  delay:       { label: 'Delayed',    color: '#92400E', bg: '#FEF3C7' },
-  dispatched:  { label: 'Dispatched', color: '#1D4ED8', bg: '#EFF6FF' },
-  ready:       { label: 'Ready',      color: '#15803D', bg: '#DCFCE7' },
-  'pre-order': { label: 'Pre-order',  color: '#4338CA', bg: '#EEF2FF' },
+  received:            { label: 'Received',      color: '#8B5CF6', bg: '#EDE9FE' },
+  delay:               { label: 'Delayed',       color: '#92400E', bg: '#FEF3C7' },
+  dispatched:          { label: 'Dispatched',    color: '#1D4ED8', bg: '#EFF6FF' },
+  ready:               { label: 'Ready',         color: '#15803D', bg: '#DCFCE7' },
+  'pre-order':         { label: 'Pre-order',     color: '#4338CA', bg: '#EEF2FF' },
+  'booking-confirmed': { label: 'Confirmed',     color: '#2BA784', bg: '#D1FAE5' },
+  'on-the-way':        { label: 'On the Way',    color: '#1D4ED8', bg: '#DBEAFE' },
+  'running-late':      { label: 'Running Late',  color: '#92400E', bg: '#FEF3C7' },
+  arrived:             { label: 'Arrived',       color: '#15803D', bg: '#DCFCE7' },
+  completed:           { label: 'Completed',     color: '#6D28D9', bg: '#EDE9FE' },
+  rescheduled:         { label: 'Rescheduled',   color: '#4B5563', bg: '#F3F4F6' },
+  'waiting-parts':     { label: 'Waiting Parts', color: '#92400E', bg: '#FEF3C7' },
+  'follow-up':         { label: 'Follow-up',     color: '#BE185D', bg: '#FCE7F3' },
 };
+
+const PRODUCT_STATUSES = ['received', 'delay', 'dispatched', 'ready', 'pre-order'];
+const SERVICE_STATUSES  = ['booking-confirmed', 'on-the-way', 'running-late', 'arrived', 'completed', 'rescheduled', 'waiting-parts', 'follow-up'];
 
 const CHANNEL_LABEL: Record<string, string> = {
   whatsapp: '💬 WA',
@@ -56,7 +68,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default function RecentList({ onSelect, businessName }: RecentListProps) {
+export default function RecentList({ onSelect, businessName, businessType = 'product' }: RecentListProps) {
   const [entries, setEntries] = useState<RecentEntry[]>([]);
   const [filter, setFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,7 +78,7 @@ export default function RecentList({ onSelect, businessName }: RecentListProps) 
     setEntries(getRecent());
   }, []);
 
-  const ALL_STATUSES = ['received', 'delay', 'dispatched', 'ready', 'pre-order'];
+  const ALL_STATUSES = businessType === 'service' ? SERVICE_STATUSES : PRODUCT_STATUSES;
   const filtered = entries.filter((e) => {
     const matchesFilter = !filter || e.status === filter;
     const q = searchQuery.trim().toLowerCase();

@@ -13,6 +13,7 @@ import PreOrderPicker, { PREORDER_PRESET_IDS } from '@/components/PreOrderPicker
 import DispatchDatePicker, { DISPATCH_PRESET_IDS } from '@/components/DispatchDatePicker';
 import CourierPaste, { type CourierId, resolveCourier } from '@/components/CourierPaste';
 import ToneSelector from '@/components/ToneSelector';
+import StatusNotePicker from '@/components/StatusNotePicker';
 import MessageEditor from '@/components/MessageEditor';
 import SendButtons from '@/components/SendButtons';
 import RecentList from '@/components/RecentList';
@@ -28,8 +29,10 @@ import type { BusinessProfile, RecentEntry } from '@/lib/storage';
 import { buildWhatsAppLink, buildSMSLink, buildEmailLink } from '@/lib/deep-links';
 import { supabase } from '@/lib/supabase';
 
-type Status = 'received' | 'delay' | 'dispatched' | 'ready' | 'pre-order' | null;
-type Tone = 'friendly' | 'professional' | 'apologetic';
+type Status = 'received' | 'delay' | 'dispatched' | 'ready' | 'pre-order'
+  | 'booking-confirmed' | 'on-the-way' | 'running-late' | 'arrived'
+  | 'completed' | 'rescheduled' | 'waiting-parts' | 'follow-up' | null;
+type Tone = 'friendly' | 'professional' | 'apologetic' | 'reassuring';
 type Channel = 'whatsapp' | 'sms' | 'email' | 'copy';
 
 interface WeekSummary {
@@ -84,7 +87,51 @@ function relativeTime(iso: string): string {
 const STATUS_LABELS: Record<string, string> = {
   received: 'Received', delay: 'Delayed', dispatched: 'Dispatched',
   ready: 'Ready', 'pre-order': 'Pre-order',
+  'booking-confirmed': 'Confirmed', 'on-the-way': 'On the Way',
+  'running-late': 'Running Late', arrived: 'Arrived', completed: 'Completed',
+  rescheduled: 'Rescheduled', 'waiting-parts': 'Waiting Parts', 'follow-up': 'Follow-up',
 };
+
+const SERVICE_CONFIRMED_OPTIONS = [
+  { id: 'Your appointment has been confirmed and our technician will be there on time', icon: '✅', label: 'Confirmed on time' },
+  { id: 'Your booking is confirmed — just a reminder of the appointment details', icon: '📅', label: 'Reminder confirmation' },
+  { id: 'Confirmed and we have everything we need to complete the job', icon: '🔧', label: 'All prepared' },
+];
+const SERVICE_ON_THE_WAY_OPTIONS = [
+  { id: 'Our technician is on the way and should arrive shortly', icon: '🚗', label: 'On the way now' },
+  { id: 'Our team has just left and is heading to you', icon: '📍', label: 'Just left' },
+  { id: 'Almost there — about 10 to 15 minutes away', icon: '⏱️', label: '10–15 min away' },
+];
+const SERVICE_LATE_OPTIONS = [
+  { id: 'Running behind due to traffic but still coming today', icon: '🚦', label: 'Traffic delay' },
+  { id: 'Running a little late due to the previous job taking longer', icon: '🔧', label: 'Previous job overran' },
+  { id: 'Slightly delayed due to weather conditions', icon: '🌧️', label: 'Weather delay' },
+];
+const SERVICE_ARRIVED_OPTIONS = [
+  { id: 'Technician has arrived on site and is getting started', icon: '🏠', label: 'Arrived, getting started' },
+  { id: 'We have arrived and are assessing the situation', icon: '🔍', label: 'Arrived, assessing' },
+  { id: 'Arrived and everything looks straightforward', icon: '✅', label: 'Arrived, looks good' },
+];
+const SERVICE_COMPLETED_OPTIONS = [
+  { id: 'Job is complete and everything has been sorted', icon: '✅', label: 'All done' },
+  { id: 'Service completed successfully — no further action needed', icon: '🎉', label: 'Completed, all good' },
+  { id: 'Service completed and a follow-up visit may be needed', icon: '📞', label: 'Done, follow-up needed' },
+];
+const SERVICE_RESCHEDULED_OPTIONS = [
+  { id: 'Appointment rescheduled due to unforeseen circumstances', icon: '📅', label: 'Unforeseen circumstances' },
+  { id: 'We need to reschedule due to technician availability', icon: '👤', label: 'Technician unavailable' },
+  { id: 'Rescheduling as the required parts are not yet available', icon: '🔧', label: 'Parts not yet available' },
+];
+const SERVICE_PARTS_OPTIONS = [
+  { id: 'Waiting for a part to arrive before we can complete the job', icon: '🔧', label: 'Part on order' },
+  { id: 'Special part needs to be sourced — this may take a day or two', icon: '📦', label: 'Sourcing special part' },
+  { id: 'Materials have been delayed but we will update you as soon as they arrive', icon: '⏳', label: 'Materials delayed' },
+];
+const SERVICE_FOLLOWUP_OPTIONS = [
+  { id: 'A follow-up visit has been scheduled to check on the work done', icon: '📅', label: 'Follow-up booked' },
+  { id: 'Checking in to see how everything is going after our visit', icon: '👋', label: 'Checking in' },
+  { id: 'Following up to confirm the issue has been fully resolved', icon: '✅', label: 'Confirming resolved' },
+];
 
 function getForgottenCustomers(recent: RecentEntry[]): RecentEntry[] {
   const PENDING = ['received', 'delay', 'pre-order'];
@@ -165,6 +212,8 @@ export default function Home() {
   const [dispatchDate, setDispatchDate] = useState<string | null>(null);
   const [readyNote, setReadyNote] = useState<string | null>(null);
   const [preOrderNote, setPreOrderNote] = useState<string | null>(null);
+  const [serviceNote, setServiceNote] = useState<string | null>(null);
+  const [appointmentTime, setAppointmentTime] = useState('');
 
   // Message
   const [selectedTone, setSelectedTone] = useState<Tone>('friendly');
@@ -221,15 +270,17 @@ export default function Home() {
           customCourierName: draft.customCourierName,
           waybill: draft.waybill,
         }]);
-        if (draft.status)      setSelectedStatus(draft.status as Status);
-        if (draft.receivedNote) setReceivedNote(draft.receivedNote);
-        if (draft.delayReason)  setDelayReason(draft.delayReason);
-        if (draft.dispatchDate) setDispatchDate(draft.dispatchDate);
-        if (draft.readyNote)    setReadyNote(draft.readyNote);
-        if (draft.preOrderNote) setPreOrderNote(draft.preOrderNote);
-        if (draft.tone)         setSelectedTone(draft.tone as Tone);
-        if (draft.message)      setGeneratedMessage(draft.message);
-        if (draft.orderItems)   setOrderItems(draft.orderItems);
+        if (draft.status)        setSelectedStatus(draft.status as Status);
+        if (draft.receivedNote)  setReceivedNote(draft.receivedNote);
+        if (draft.delayReason)   setDelayReason(draft.delayReason);
+        if (draft.dispatchDate)  setDispatchDate(draft.dispatchDate);
+        if (draft.readyNote)     setReadyNote(draft.readyNote);
+        if (draft.preOrderNote)  setPreOrderNote(draft.preOrderNote);
+        if (draft.serviceNote)   setServiceNote(draft.serviceNote);
+        if (draft.appointmentTime) setAppointmentTime(draft.appointmentTime);
+        if (draft.tone)          setSelectedTone(draft.tone as Tone);
+        if (draft.message)       setGeneratedMessage(draft.message);
+        if (draft.orderItems)    setOrderItems(draft.orderItems);
       } else {
         const lastCourier = getLastCourier();
         if (lastCourier) {
@@ -271,6 +322,12 @@ export default function Home() {
       setSelectedTone('apologetic');
     } else if (selectedStatus === 'received' || selectedStatus === 'ready') {
       setSelectedTone('friendly');
+    } else if (selectedStatus === 'running-late' || selectedStatus === 'rescheduled' || selectedStatus === 'waiting-parts') {
+      setSelectedTone('apologetic');
+    } else if (selectedStatus === 'on-the-way' || selectedStatus === 'arrived') {
+      setSelectedTone('reassuring');
+    } else if (selectedStatus === 'booking-confirmed' || selectedStatus === 'completed' || selectedStatus === 'follow-up') {
+      setSelectedTone('friendly');
     }
   }, [selectedStatus]);
 
@@ -305,6 +362,8 @@ export default function Home() {
         dispatchDate,
         readyNote,
         preOrderNote,
+        serviceNote,
+        appointmentTime,
         tone:             selectedTone,
         courier:          r0?.courier ?? null,
         customCourierName: r0?.customCourierName ?? '',
@@ -314,7 +373,7 @@ export default function Home() {
       });
     }, 400);
     return () => clearTimeout(t);
-  }, [recipients, selectedStatus, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, selectedTone, generatedMessage, orderItems]);
+  }, [recipients, selectedStatus, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, serviceNote, appointmentTime, selectedTone, generatedMessage, orderItems]);
 
   const updateRecipient = (index: number, field: 'name' | 'phone' | 'email' | 'customCourierName' | 'waybill', value: string) => {
     setRecipients((prev) => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
@@ -370,6 +429,8 @@ export default function Home() {
     setDispatchDate(null);
     setReadyNote(null);
     setPreOrderNote(null);
+    setServiceNote(null);
+    setAppointmentTime('');
   };
 
   const validate = () => {
@@ -397,6 +458,7 @@ export default function Home() {
         r0?.customCourierName ?? ''
       );
 
+      const isProduct = (profile.businessType ?? 'product') === 'product';
       const { data: { session: genSess } } = await supabase.auth.getSession();
       const res = await fetch('/api/generate-message', {
         method: 'POST',
@@ -407,20 +469,24 @@ export default function Home() {
         body: JSON.stringify({
           customerName: r0?.name.trim() ?? '',
           status: selectedStatus,
+          businessType: profile.businessType ?? 'product',
           receivedNote,
           dispatchDate: dispatchDate || null,
-          courierName,
-          courierDeliveryTime,
-          waybillNumber: r0?.waybill?.trim() || null,
+          courierName:         isProduct ? courierName : null,
+          courierDeliveryTime: isProduct ? courierDeliveryTime : null,
+          waybillNumber:       isProduct ? (r0?.waybill?.trim() || null) : null,
           courierMessage: null,
           delayReason,
           readyNote,
           preOrderNote,
+          serviceNote,
+          appointmentTime: appointmentTime.trim() || null,
           orderItems: orderItems || null,
           tone: selectedTone,
           businessName: profile.businessName,
           pickupAddress: profile.pickupAddress || null,
-          businessHours: profile.businessHours || null,
+          businessHours: (selectedStatus === 'ready' || selectedStatus === 'booking-confirmed')
+            ? (profile.businessHours || null) : null,
           frustrationContext: frustration.context || null,
         }),
       });
@@ -885,35 +951,68 @@ export default function Home() {
           </div>
         )}
 
-        {/* Courier — always visible, separate card */}
-        <div style={{
-          background: 'var(--surface)', borderRadius: 20,
-          border: '1.5px solid var(--border)',
-          padding: 'var(--space-4)',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
-        }}>
-          <p style={{
-            fontFamily: 'var(--font-body)', fontSize: '0.75rem', fontWeight: 700,
-            color: 'var(--text-muted)', textTransform: 'uppercase',
-            letterSpacing: '0.06em', margin: '0 0 4px',
+        {/* Courier (product) or Appointment Time (service) */}
+        {(profile.businessType ?? 'product') === 'product' ? (
+          <div style={{
+            background: 'var(--surface)', borderRadius: 20,
+            border: '1.5px solid var(--border)',
+            padding: 'var(--space-4)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
           }}>
-            Courier
-          </p>
-          <p style={{
-            fontFamily: 'var(--font-body)', fontSize: '0.8125rem', fontWeight: 400,
-            color: 'var(--text-light)', margin: '0 0 14px', lineHeight: 1.4,
+            <p style={{
+              fontFamily: 'var(--font-body)', fontSize: '0.75rem', fontWeight: 700,
+              color: 'var(--text-muted)', textTransform: 'uppercase',
+              letterSpacing: '0.06em', margin: '0 0 4px',
+            }}>
+              Courier
+            </p>
+            <p style={{
+              fontFamily: 'var(--font-body)', fontSize: '0.8125rem', fontWeight: 400,
+              color: 'var(--text-light)', margin: '0 0 14px', lineHeight: 1.4,
+            }}>
+              Select the courier you&apos;re using for this order
+            </p>
+            <CourierPaste
+              courier={recipients[0]?.courier ?? null}
+              customCourierName={recipients[0]?.customCourierName ?? ''}
+              waybill={recipients[0]?.waybill ?? ''}
+              onCourierChange={(v) => updateRecipientCourier(0, v)}
+              onCustomCourierChange={(v) => updateRecipient(0, 'customCourierName', v)}
+              onWaybillChange={(v) => updateRecipient(0, 'waybill', v)}
+            />
+          </div>
+        ) : (
+          <div style={{
+            background: 'var(--surface)', borderRadius: 20,
+            border: '1.5px solid var(--border)',
+            padding: 'var(--space-4)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
           }}>
-            Select the courier you&apos;re using for this order
-          </p>
-          <CourierPaste
-            courier={recipients[0]?.courier ?? null}
-            customCourierName={recipients[0]?.customCourierName ?? ''}
-            waybill={recipients[0]?.waybill ?? ''}
-            onCourierChange={(v) => updateRecipientCourier(0, v)}
-            onCustomCourierChange={(v) => updateRecipient(0, 'customCourierName', v)}
-            onWaybillChange={(v) => updateRecipient(0, 'waybill', v)}
-          />
-        </div>
+            <p style={{
+              fontFamily: 'var(--font-body)', fontSize: '0.75rem', fontWeight: 700,
+              color: 'var(--text-muted)', textTransform: 'uppercase',
+              letterSpacing: '0.06em', margin: '0 0 4px',
+            }}>
+              Appointment Time
+              <span style={{ fontWeight: 400, textTransform: 'none', marginLeft: 6, color: 'var(--text-light)' }}>(optional)</span>
+            </p>
+            <input
+              type="text"
+              value={appointmentTime}
+              onChange={(e) => setAppointmentTime(e.target.value)}
+              placeholder="e.g. Tomorrow 10:00 AM, or 2:30 PM today"
+              style={{
+                width: '100%', padding: '14px var(--space-4)',
+                border: '1.5px solid var(--border)',
+                borderRadius: 'var(--radius-lg)',
+                background: 'var(--background)',
+                fontFamily: 'var(--font-body)', fontSize: '1rem',
+                color: 'var(--text)', outline: 'none', minHeight: 52,
+                marginTop: 8,
+              }}
+            />
+          </div>
+        )}
 
         <StatusSelector
           selected={selectedStatus}
@@ -924,6 +1023,7 @@ export default function Home() {
             setErrors((e) => ({ ...e, status: undefined }));
           }}
           error={errors.status}
+          businessType={profile.businessType ?? 'product'}
         />
 
         {selectedStatus === 'received' && (
@@ -946,7 +1046,48 @@ export default function Home() {
           <PreOrderPicker selected={preOrderNote} onSelect={setPreOrderNote} />
         )}
 
-        <ToneSelector selected={selectedTone} onSelect={setSelectedTone} />
+        {selectedStatus === 'booking-confirmed' && (
+          <StatusNotePicker heading="Booking detail" options={SERVICE_CONFIRMED_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#2BA784"
+            statusKey="booking-confirmed" customPlaceholder="e.g. bring your ID..." />
+        )}
+        {selectedStatus === 'on-the-way' && (
+          <StatusNotePicker heading="How far away?" options={SERVICE_ON_THE_WAY_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#3B82F6"
+            statusKey="on-the-way" customPlaceholder="e.g. 30 minutes away..." />
+        )}
+        {selectedStatus === 'running-late' && (
+          <StatusNotePicker heading="Reason for delay" options={SERVICE_LATE_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#E8A435"
+            statusKey="running-late" customPlaceholder="e.g. stuck in traffic on the N1..." />
+        )}
+        {selectedStatus === 'arrived' && (
+          <StatusNotePicker heading="Arrival note" options={SERVICE_ARRIVED_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#16A34A"
+            statusKey="arrived" customPlaceholder="e.g. parked outside..." />
+        )}
+        {selectedStatus === 'completed' && (
+          <StatusNotePicker heading="Completion note" options={SERVICE_COMPLETED_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#8B5CF6"
+            statusKey="completed" customPlaceholder="e.g. invoice will follow..." />
+        )}
+        {selectedStatus === 'rescheduled' && (
+          <StatusNotePicker heading="Reason for rescheduling" options={SERVICE_RESCHEDULED_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#6B7280"
+            statusKey="rescheduled" customPlaceholder="e.g. technician is ill..." />
+        )}
+        {selectedStatus === 'waiting-parts' && (
+          <StatusNotePicker heading="What are you waiting for?" options={SERVICE_PARTS_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#D4A843"
+            statusKey="waiting-parts" customPlaceholder="e.g. waiting for the motor..." />
+        )}
+        {selectedStatus === 'follow-up' && (
+          <StatusNotePicker heading="Follow-up reason" options={SERVICE_FOLLOWUP_OPTIONS}
+            selected={serviceNote} onSelect={setServiceNote} activeColor="#EC4899"
+            statusKey="follow-up" customPlaceholder="e.g. checking if the issue returned..." />
+        )}
+
+        <ToneSelector selected={selectedTone} onSelect={setSelectedTone} businessType={profile.businessType ?? 'product'} />
 
         <div style={{ height: 1, background: 'var(--border-light)', margin: '4px 0' }} />
 
@@ -1038,7 +1179,7 @@ export default function Home() {
               padding: '14px 18px',
               boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
             }}>
-              <RecentList key={recentKey} onSelect={handleRecentSelect} businessName={profile.businessName} />
+              <RecentList key={recentKey} onSelect={handleRecentSelect} businessName={profile.businessName} businessType={profile.businessType ?? 'product'} />
             </div>
           </div>{/* end sidebar-col */}
 
