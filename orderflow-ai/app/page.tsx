@@ -18,12 +18,29 @@ import MessageEditor from '@/components/MessageEditor';
 import SendButtons from '@/components/SendButtons';
 import RecentList from '@/components/RecentList';
 import Confetti from '@/components/Confetti';
+import StatsBar from '@/components/StatsBar';
+import WelcomeCard from '@/components/WelcomeCard';
+import WeeklyReport from '@/components/WeeklyReport';
+import AllGoodCard from '@/components/AllGoodCard';
+import ReminderCard from '@/components/ReminderCard';
+import FrustrationCard from '@/components/FrustrationCard';
+import { captureEvent, identifyUser } from '@/lib/posthog';
+import {
+  getWeekKey, getLastWeekSummary, getForgottenCustomers, detectFrustration,
+  type WeekSummary, type FrustrationResult, type ForgottenCustomer,
+} from '@/lib/engagement-utils';
+import {
+  SERVICE_CONFIRMED_OPTIONS, SERVICE_ON_THE_WAY_OPTIONS, SERVICE_LATE_OPTIONS,
+  SERVICE_ARRIVED_OPTIONS, SERVICE_COMPLETED_OPTIONS, SERVICE_RESCHEDULED_OPTIONS,
+  SERVICE_PARTS_OPTIONS, SERVICE_FOLLOWUP_OPTIONS,
+} from '@/lib/service-options';
 import {
   getProfile, fetchProfileFromSupabase, syncProfileToSupabase,
   addRecent, getRecent, getLastCourier, saveLastCourier, addNoteHistory,
   incrementTotalSent, getLastMilestone, setLastMilestone,
   getLastOpen, setLastOpen, getWeekReportDismissed, setWeekReportDismissed,
   getDraft, saveDraft, clearDraft, fetchAndMergeRecent,
+  getGuestSent, incrementGuestSent, setWasGuest,
 } from '@/lib/storage';
 import type { BusinessProfile, RecentEntry } from '@/lib/storage';
 import { buildWhatsAppLink, buildSMSLink, buildEmailLink } from '@/lib/deep-links';
@@ -35,162 +52,7 @@ type Status = 'received' | 'delay' | 'dispatched' | 'ready' | 'pre-order'
 type Tone = 'friendly' | 'professional' | 'apologetic' | 'reassuring';
 type Channel = 'whatsapp' | 'sms' | 'email' | 'copy';
 
-interface WeekSummary {
-  updates: number;
-  customers: number;
-  bestDay: string;
-}
-
-function getWeekKey(date: Date): string {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-  return `${d.getFullYear()}-W${weekNum}`;
-}
-
-function getLastWeekSummary(recent: RecentEntry[]): WeekSummary | null {
-  const now = new Date();
-  const startOfThisWeek = new Date(now);
-  startOfThisWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  startOfThisWeek.setHours(0, 0, 0, 0);
-  const startOfLastWeek = new Date(startOfThisWeek);
-  startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
-
-  const lastWeekEntries = recent.filter(e => {
-    const t = new Date(e.timestamp);
-    return t >= startOfLastWeek && t < startOfThisWeek;
-  });
-  if (lastWeekEntries.length === 0) return null;
-
-  const uniqueCustomers = new Set(lastWeekEntries.map(e => e.phoneNumber)).size;
-  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const countsByDay: Record<number, number> = {};
-  lastWeekEntries.forEach(e => {
-    const day = new Date(e.timestamp).getDay();
-    countsByDay[day] = (countsByDay[day] ?? 0) + 1;
-  });
-  const bestDayNum = parseInt(Object.entries(countsByDay).sort((a, b) => b[1] - a[1])[0][0]);
-  return { updates: lastWeekEntries.length, customers: uniqueCustomers, bestDay: DAY_NAMES[bestDayNum] };
-}
-
-function relativeTime(iso: string): string {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1)  return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  received: 'Received', delay: 'Delayed', dispatched: 'Dispatched',
-  ready: 'Ready', 'pre-order': 'Pre-order',
-  'booking-confirmed': 'Confirmed', 'on-the-way': 'On the Way',
-  'running-late': 'Running Late', arrived: 'Arrived', completed: 'Completed',
-  rescheduled: 'Rescheduled', 'waiting-parts': 'Waiting Parts', 'follow-up': 'Follow-up',
-};
-
-const SERVICE_CONFIRMED_OPTIONS = [
-  { id: 'Your appointment has been confirmed and our technician will be there on time', icon: '✅', label: 'Confirmed on time' },
-  { id: 'Your booking is confirmed — just a reminder of the appointment details', icon: '📅', label: 'Reminder confirmation' },
-  { id: 'Confirmed and we have everything we need to complete the job', icon: '🔧', label: 'All prepared' },
-];
-const SERVICE_ON_THE_WAY_OPTIONS = [
-  { id: 'Our technician is on the way and should arrive shortly', icon: '🚗', label: 'On the way now' },
-  { id: 'Our team has just left and is heading to you', icon: '📍', label: 'Just left' },
-  { id: 'Almost there — about 10 to 15 minutes away', icon: '⏱️', label: '10–15 min away' },
-];
-const SERVICE_LATE_OPTIONS = [
-  { id: 'Running behind due to traffic but still coming today', icon: '🚦', label: 'Traffic delay' },
-  { id: 'Running a little late due to the previous job taking longer', icon: '🔧', label: 'Previous job overran' },
-  { id: 'Slightly delayed due to weather conditions', icon: '🌧️', label: 'Weather delay' },
-];
-const SERVICE_ARRIVED_OPTIONS = [
-  { id: 'Technician has arrived on site and is getting started', icon: '🏠', label: 'Arrived, getting started' },
-  { id: 'We have arrived and are assessing the situation', icon: '🔍', label: 'Arrived, assessing' },
-  { id: 'Arrived and everything looks straightforward', icon: '✅', label: 'Arrived, looks good' },
-];
-const SERVICE_COMPLETED_OPTIONS = [
-  { id: 'Job is complete and everything has been sorted', icon: '✅', label: 'All done' },
-  { id: 'Service completed successfully — no further action needed', icon: '🎉', label: 'Completed, all good' },
-  { id: 'Service completed and a follow-up visit may be needed', icon: '📞', label: 'Done, follow-up needed' },
-];
-const SERVICE_RESCHEDULED_OPTIONS = [
-  { id: 'Appointment rescheduled due to unforeseen circumstances', icon: '📅', label: 'Unforeseen circumstances' },
-  { id: 'We need to reschedule due to technician availability', icon: '👤', label: 'Technician unavailable' },
-  { id: 'Rescheduling as the required parts are not yet available', icon: '🔧', label: 'Parts not yet available' },
-];
-const SERVICE_PARTS_OPTIONS = [
-  { id: 'Waiting for a part to arrive before we can complete the job', icon: '🔧', label: 'Part on order' },
-  { id: 'Special part needs to be sourced — this may take a day or two', icon: '📦', label: 'Sourcing special part' },
-  { id: 'Materials have been delayed but we will update you as soon as they arrive', icon: '⏳', label: 'Materials delayed' },
-];
-const SERVICE_FOLLOWUP_OPTIONS = [
-  { id: 'A follow-up visit has been scheduled to check on the work done', icon: '📅', label: 'Follow-up booked' },
-  { id: 'Checking in to see how everything is going after our visit', icon: '👋', label: 'Checking in' },
-  { id: 'Following up to confirm the issue has been fully resolved', icon: '✅', label: 'Confirming resolved' },
-];
-
-function getForgottenCustomers(recent: RecentEntry[]): RecentEntry[] {
-  const PENDING = ['received', 'delay', 'pre-order'];
-  const now = Date.now();
-  const seen = new Map<string, RecentEntry>();
-  for (const e of recent) {
-    if (!seen.has(e.phoneNumber)) seen.set(e.phoneNumber, e);
-  }
-  return Array.from(seen.values()).filter(e =>
-    PENDING.includes(e.status) && now - new Date(e.timestamp).getTime() > 24 * 3600 * 1000
-  );
-}
-
 const MILESTONES = [10, 25, 50, 100, 200, 500];
-
-type FrustrationLevel = 'none' | 'moderate' | 'high';
-interface FrustrationResult { level: FrustrationLevel; signals: string[]; context: string; }
-
-function detectFrustration(phone: string, recent: RecentEntry[]): FrustrationResult {
-  const history = recent
-    .filter(e => e.phoneNumber === phone)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  if (history.length === 0) return { level: 'none', signals: [], context: '' };
-
-  let score = 0;
-  const signals: string[] = [];
-  const now = Date.now();
-  const latest = history[0];
-  const oldest = history[history.length - 1];
-  const delays = history.filter(e => e.status === 'delay');
-  const hoursSinceLatest = (now - new Date(latest.timestamp).getTime()) / 3600000;
-  const hoursSinceFirst  = (now - new Date(oldest.timestamp).getTime()) / 3600000;
-  const pendingStatuses  = ['received', 'delay', 'pre-order'];
-
-  if (delays.length >= 3)      { score += 50; signals.push(`${delays.length} delay updates`); }
-  else if (delays.length === 2){ score += 35; signals.push('2 delay updates'); }
-  else if (delays.length === 1){ score += 15; signals.push('1 delay update'); }
-
-  if (history.length >= 5)     { score += 20; signals.push(`${history.length} messages sent`); }
-  else if (history.length >= 3){ score += 10; signals.push(`${history.length} messages sent`); }
-
-  if (pendingStatuses.includes(latest.status) && hoursSinceLatest >= 72)
-    { score += 25; signals.push('waiting 3+ days'); }
-  else if (pendingStatuses.includes(latest.status) && hoursSinceLatest >= 48)
-    { score += 15; signals.push('waiting 2+ days'); }
-
-  if (hoursSinceFirst >= 168) { score += 15; signals.push('order 7+ days old'); }
-  if (latest.status === 'delay') score += 10;
-
-  const level: FrustrationLevel = score >= 55 ? 'high' : score >= 25 ? 'moderate' : 'none';
-  const context = level === 'high'
-    ? `This customer has been waiting a long time and received multiple delay updates (${signals.join(', ')}). They may be frustrated or anxious. Be genuinely empathetic, acknowledge their patience explicitly, and make them feel like a priority — this is a trust-repair moment.`
-    : level === 'moderate'
-    ? `This customer may be experiencing some frustration (${signals.join(', ')}). Be warmer and more reassuring than usual.`
-    : '';
-
-  return { level, signals, context };
-}
 
 export default function Home() {
   const router = useRouter();
@@ -233,7 +95,7 @@ export default function Home() {
   const [todayCount, setTodayCount] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const [lastEntry, setLastEntry] = useState<RecentEntry | null>(null);
-  const [forgotten, setForgotten] = useState<RecentEntry[]>([]);
+  const [forgotten, setForgotten] = useState<ForgottenCustomer[]>([]);
   const [reminderDismissed, setReminderDismissed] = useState(false);
   const [weekSummary, setWeekSummary] = useState<WeekSummary | null>(null);
   const [showWeekCard, setShowWeekCard] = useState(false);
@@ -242,6 +104,11 @@ export default function Home() {
   const [recentList, setRecentList] = useState<RecentEntry[]>([]);
   const [frustration, setFrustration] = useState<FrustrationResult>({ level: 'none', signals: [], context: '' });
   const toneAutoSet = useRef(false);
+
+  const [isGuest, setIsGuest] = useState(false);
+  const [guestSent, setGuestSent] = useState(0);
+  const [showGuestGate, setShowGuestGate] = useState(false);
+  const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
 
   const messageRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -258,6 +125,10 @@ export default function Home() {
       }
       if (!p) { router.replace('/setup'); return; }
       setProfile(p);
+      const guest = user.is_anonymous ?? false;
+      setIsGuest(guest);
+      if (guest) setGuestSent(getGuestSent());
+      identifyUser(user.id, { businessType: p.businessType ?? 'product' });
 
       // Restore in-progress draft, or fall back to last-used courier
       const draft = getDraft();
@@ -447,6 +318,7 @@ export default function Home() {
 
   const handleGenerate = async () => {
     setGenerateError('');
+    if (isGuest && guestSent >= 10) { setShowGuestGate(true); return; }
     if (!validate() || !profile) return;
     setIsGenerating(true);
     setGeneratedMessage('');
@@ -484,6 +356,7 @@ export default function Home() {
           orderItems: orderItems || null,
           tone: selectedTone,
           businessName: profile.businessName,
+          businessDescription: profile.businessDescription,
           pickupAddress: profile.pickupAddress || null,
           businessHours: (selectedStatus === 'ready' || selectedStatus === 'booking-confirmed')
             ? (profile.businessHours || null) : null,
@@ -498,6 +371,11 @@ export default function Home() {
 
       const data = await res.json();
       if (data.message) {
+        captureEvent('message_generated', {
+          status:       selectedStatus,
+          tone:         selectedTone,
+          businessType: profile.businessType ?? 'product',
+        });
         setGeneratedMessage(data.message);
         setTimeout(() => messageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 
@@ -538,6 +416,11 @@ export default function Home() {
       timestamp: new Date().toISOString(),
     });
     if (recipient.courier) saveLastCourier(recipient.courier);
+    if (isGuest) {
+      const newGuestSent = incrementGuestSent();
+      setGuestSent(newGuestSent);
+      if (newGuestSent >= 10) setShowGuestGate(true);
+    }
     setRecentKey((k) => k + 1);
 
     // Refresh last entry + forgotten + recent list for frustration detection
@@ -552,6 +435,12 @@ export default function Home() {
     const hit = MILESTONES.find(m => count >= m && last < m);
     if (hit) { setLastMilestone(hit); setShowConfetti(true); }
     setTodayCount(prev => prev + 1);
+
+    captureEvent('message_sent', {
+      channel,
+      status:       selectedStatus,
+      businessType: profile.businessType ?? 'product',
+    });
 
     if (channel === 'whatsapp') {
       window.open(buildWhatsAppLink(recipient.phone.trim(), message), '_blank');
@@ -600,213 +489,151 @@ export default function Home() {
         businessName={profile.businessName}
       />
 
+      {/* ── Guest gate modal ── */}
+      {showGuestGate && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+          zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}>
+          <div style={{
+            background: 'var(--surface)', borderRadius: 24, padding: 36,
+            maxWidth: 420, width: '100%', textAlign: 'center',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+            border: '1.5px solid var(--border)',
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: 16 }}>🔒</div>
+            <h2 style={{
+              fontFamily: 'var(--font-display)', fontSize: '1.375rem',
+              fontWeight: 800, color: 'var(--text)', marginBottom: 10,
+              letterSpacing: '-0.02em',
+            }}>
+              You&apos;ve used your 10 free updates
+            </h2>
+            <p style={{
+              fontFamily: 'var(--font-body)', fontSize: '0.9375rem',
+              color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 28,
+            }}>
+              Sign up free to keep going — your data and history stay exactly as they are.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                setWasGuest(false);
+                await supabase.auth.signOut();
+                router.push('/auth');
+              }}
+              style={{
+                width: '100%', padding: '15px', borderRadius: 'var(--radius-xl)',
+                border: 'none', background: 'var(--primary)', color: 'white',
+                fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700,
+                cursor: 'pointer', marginBottom: 10, minHeight: 52,
+                boxShadow: '0 4px 16px rgba(26,86,232,0.35)',
+              }}
+            >
+              Sign Up Free →
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setWasGuest(false);
+                await supabase.auth.signOut();
+                router.push('/auth');
+              }}
+              style={{
+                width: '100%', padding: '13px', borderRadius: 'var(--radius-xl)',
+                border: '1.5px solid var(--border)', background: 'transparent',
+                color: 'var(--text-muted)', fontFamily: 'var(--font-body)',
+                fontSize: '0.9375rem', fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              I already have an account
+            </button>
+          </div>
+        </div>
+      )}
+
       <main ref={formRef} className="main-container">
 
         {/* ── Top section: stats + engagement cards ── */}
         <div className="top-section">
+          <StatsBar count={todayCount} />
 
-        {/* ── Stats card ── */}
-        <div style={{
-          background: 'linear-gradient(135deg, #EEF4FF 0%, #F8FAFF 100%)',
-          borderRadius: 16,
-          border: '1.5px solid #BFDBFE',
-          padding: '18px 20px', marginBottom: 4,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 2px 12px rgba(26,110,245,0.08)',
-        }}>
-          <div style={{ textAlign: 'center' }}>
-            <p style={{
-              margin: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              fontSize: '2.5rem', fontWeight: 800,
-              color: 'var(--primary)', fontFamily: 'var(--font-display)', lineHeight: 1,
-            }}>
-              {todayCount}
-              <span style={{ fontSize: '1.5rem' }}>📈</span>
-            </p>
-            <p style={{
-              margin: '6px 0 0', fontSize: '0.75rem', color: '#1A6EF5',
-              fontWeight: 700, fontFamily: 'var(--font-body)',
-              textTransform: 'uppercase', letterSpacing: '0.06em',
-            }}>
-              customers informed today
-            </p>
-          </div>
-        </div>
-
-        {/* Welcome back card */}
-        {showWelcomeBack && (
-          <div style={{
-            background: '#F0FDF4', border: '1.5px solid #BBF7D0',
-            borderRadius: 16, padding: 16, position: 'relative',
-          }}>
-            <button
-              onClick={() => setShowWelcomeBack(false)}
-              style={{
-                position: 'absolute', top: 10, right: 12,
-                background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 18, color: 'var(--text-muted)', lineHeight: 1, padding: 2,
-              }}
-            >✕</button>
-            <p style={{
-              margin: '0 0 4px', fontSize: '1rem', fontWeight: 700,
-              color: '#166534', fontFamily: 'var(--font-display)',
-            }}>
-              👋 Welcome back{profile.businessName ? `, ${profile.businessName.split(' ')[0]}` : ''}!
-            </p>
-            <p style={{ margin: 0, fontSize: '0.875rem', color: '#15803D', fontFamily: 'var(--font-body)' }}>
-              You&apos;ve been away {hoursAway} day{hoursAway !== 1 ? 's' : ''}.
-              {forgotten.length > 0 && (
-                <> {forgotten.length} customer{forgotten.length !== 1 ? 's' : ''} may need an update.</>
-              )}
-            </p>
-          </div>
-        )}
-
-        {/* Weekly report card — Mondays only */}
-        {showWeekCard && weekSummary && (
-          <div style={{
-            background: '#EFF6FF', border: '1.5px solid #BFDBFE',
-            borderRadius: 16, padding: 16,
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{
-                fontSize: '0.9375rem', fontWeight: 700,
-                color: '#1E40AF', fontFamily: 'var(--font-display)',
-              }}>
-                📊 Last week
-              </span>
-              <button
-                onClick={() => { setShowWeekCard(false); setWeekReportDismissed(getWeekKey(new Date())); }}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 18, color: 'var(--text-muted)', lineHeight: 1, padding: 2,
-                }}
-              >✕</button>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-              {([
-                { num: weekSummary.updates, label: 'updates' },
-                { num: weekSummary.customers, label: 'customers' },
-                { num: weekSummary.bestDay.slice(0, 3), label: 'best day' },
-              ] as const).map(({ num, label }) => (
-                <div key={label} style={{ textAlign: 'center' }}>
-                  <p style={{
-                    margin: 0, fontSize: '1.75rem', fontWeight: 800,
-                    color: 'var(--primary)', fontFamily: 'var(--font-display)',
-                  }}>
-                    {num}
-                  </p>
-                  <p style={{
-                    margin: 0, fontSize: '0.6875rem', color: 'var(--text-muted)',
-                    fontWeight: 600, fontFamily: 'var(--font-body)',
-                    textTransform: 'uppercase', letterSpacing: '0.04em',
-                  }}>
-                    {label}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* All good card — shown when there are no forgotten customers but at least one message sent */}
-        {lastEntry && forgotten.length === 0 && (
-          <div style={{
-            background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
-            border: '1.5px solid #BBF7D0',
-            borderRadius: 16, padding: '14px 18px',
-            display: 'flex', alignItems: 'center', gap: 12,
-            boxShadow: '0 2px 12px rgba(34,197,94,0.08)',
-          }}>
+          {/* ── Guest nudge banner ── */}
+          {isGuest && !guestBannerDismissed && (
             <div style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: '#DCFCE7', border: '1.5px solid #86EFAC',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0, fontSize: '1.125rem', fontWeight: 700, color: '#166534',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 12, padding: '12px 16px',
+              background: guestSent >= 7 ? '#FFF7ED' : '#FFFBEB',
+              border: `1.5px solid ${guestSent >= 7 ? '#FDBA74' : '#FDE68A'}`,
+              borderRadius: 14,
             }}>
-              ✓
-            </div>
-            <div>
-              <p style={{
-                margin: 0, fontSize: '0.9375rem', fontWeight: 700,
-                color: '#166534', fontFamily: 'var(--font-display)',
+              <span style={{
+                fontFamily: 'var(--font-body)', fontSize: '0.875rem',
+                color: guestSent >= 7 ? '#9A3412' : '#92400E',
               }}>
-                All customers have been informed.
-              </p>
-              <p style={{
-                margin: '2px 0 0', fontSize: '0.8125rem',
-                color: '#15803D', fontFamily: 'var(--font-body)', fontWeight: 400,
-              }}>
-                Last: {lastEntry.customerName} · {STATUS_LABELS[lastEntry.status] ?? lastEntry.status} · {relativeTime(lastEntry.timestamp)}
-              </p>
+                {guestSent >= 7
+                  ? `⚠️ ${10 - guestSent} free update${10 - guestSent !== 1 ? 's' : ''} left — sign up to keep going.`
+                  : 'Guest mode — your data is saved on this browser only.'}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={async () => { setWasGuest(false); await supabase.auth.signOut(); router.push('/auth'); }}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontFamily: 'var(--font-body)', fontSize: '0.875rem',
+                    fontWeight: 700, color: '#D97706', padding: 0,
+                  }}
+                >
+                  Sign up →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGuestBannerDismissed(true)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--text-muted)', fontSize: '1rem', lineHeight: 1, padding: 2,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Reminder card — forgotten customers with clickable rows */}
-        {lastEntry && forgotten.length > 0 && !reminderDismissed && (
-          <div style={{
-            background: '#FFFBEB', border: '1.5px solid #FDE68A',
-            borderRadius: 16, padding: '12px 16px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 2 }}>
-              <p style={{
-                margin: 0, fontSize: '0.8125rem', fontWeight: 500,
-                color: '#92400E', fontFamily: 'var(--font-body)', flex: 1,
-              }}>
-                Last update: <strong>{lastEntry.customerName}</strong>{' '}
-                <span style={{ color: '#B45309' }}>
-                  ({STATUS_LABELS[lastEntry.status] ?? lastEntry.status} · {relativeTime(lastEntry.timestamp)})
-                </span>
-              </p>
-              <button
-                onClick={() => setReminderDismissed(true)}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: '#B45309', fontSize: '1rem', lineHeight: 1,
-                  padding: '0 0 0 8px', opacity: 0.7, flexShrink: 0,
-                }}
-                aria-label="Dismiss"
-              >
-                ✕
-              </button>
-            </div>
-            <p style={{
-              margin: '0 0 10px', fontSize: '0.875rem', fontWeight: 700,
-              color: '#92400E', fontFamily: 'var(--font-display)',
-            }}>
-              Are you sure you&apos;re not missing anyone? 👀
-            </p>
-            {forgotten.map((c, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  setRecipients([{ name: c.customerName, phone: c.phoneNumber, email: c.email ?? '', courier: null, customCourierName: '', waybill: '' }]);
-                  setErrors({ recipients: [{}] });
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  background: 'rgba(255,255,255,0.6)', border: '1px solid #FDE68A',
-                  borderRadius: 10, padding: '10px 12px', marginBottom: 6,
-                  cursor: 'pointer', textAlign: 'left',
-                }}
-              >
-                <div>
-                  <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 700, color: '#92400E', fontFamily: 'var(--font-display)' }}>
-                    {c.customerName}
-                  </p>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#B45309', fontFamily: 'var(--font-body)' }}>
-                    {STATUS_LABELS[c.status] ?? c.status} · {relativeTime(c.timestamp)}
-                  </p>
-                </div>
-                <span style={{ color: '#B45309', fontSize: '1rem' }}>→</span>
-              </button>
-            ))}
-          </div>
-        )}
+          {showWelcomeBack && (
+            <WelcomeCard
+              businessName={profile.businessName}
+              hoursAway={hoursAway}
+              forgottenCount={forgotten.length}
+              onDismiss={() => setShowWelcomeBack(false)}
+            />
+          )}
 
+          {showWeekCard && weekSummary && (
+            <WeeklyReport
+              summary={weekSummary}
+              onDismiss={() => { setShowWeekCard(false); setWeekReportDismissed(getWeekKey(new Date())); }}
+            />
+          )}
+
+          {lastEntry && forgotten.length === 0 && (
+            <AllGoodCard lastEntry={lastEntry} />
+          )}
+
+          {lastEntry && forgotten.length > 0 && !reminderDismissed && (
+            <ReminderCard
+              lastEntry={lastEntry}
+              forgotten={forgotten}
+              onFillRecipient={(name, phone, email) => {
+                setRecipients([{ name, phone, email, courier: null, customCourierName: '', waybill: '' }]);
+                setErrors({ recipients: [{}] });
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onDismiss={() => setReminderDismissed(true)}
+            />
+          )}
         </div>{/* end top-section */}
 
         {/* ── Two-column content area ── */}
@@ -905,51 +732,7 @@ export default function Home() {
           showCourier={false}
         />
 
-        {/* Mood detection card */}
-        {frustration.level !== 'none' && (
-          <div style={{
-            background: frustration.level === 'high' ? '#FFF7ED' : '#FFFBEB',
-            border: `1.5px solid ${frustration.level === 'high' ? '#FED7AA' : '#FDE68A'}`,
-            borderRadius: 16, padding: '14px 16px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%',
-                background: 'rgba(0,0,0,0.05)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1rem', flexShrink: 0,
-              }}>
-                {frustration.level === 'high' ? '⚠️' : '🔍'}
-              </div>
-              <div>
-                <p style={{
-                  margin: 0, fontSize: '0.8125rem', fontWeight: 700,
-                  color: frustration.level === 'high' ? '#78350F' : '#92400E',
-                  fontFamily: 'var(--font-display)',
-                }}>
-                  {frustration.level === 'high' ? 'Customer may be frustrated' : 'Customer needs extra care'}
-                </p>
-                <p style={{ margin: 0, fontSize: '0.75rem', color: '#B45309', fontFamily: 'var(--font-body)' }}>
-                  Tone auto-set to Apologetic
-                </p>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {frustration.signals.map((sig, i) => (
-                <span key={i} style={{
-                  padding: '3px 10px', borderRadius: 20,
-                  background: frustration.level === 'high' ? '#FFEDD5' : '#FEF3C7',
-                  border: `1px solid ${frustration.level === 'high' ? '#FED7AA' : '#FDE68A'}`,
-                  fontSize: '0.6875rem', fontWeight: 600,
-                  color: frustration.level === 'high' ? '#78350F' : '#92400E',
-                  fontFamily: 'var(--font-body)',
-                }}>
-                  {sig}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        <FrustrationCard frustration={frustration} />
 
         {/* Courier (product) or Appointment Time (service) */}
         {(profile.businessType ?? 'product') === 'product' ? (

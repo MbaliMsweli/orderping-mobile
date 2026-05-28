@@ -1,25 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
+import type { BusinessProfile, RecentEntry } from '@shared/types';
 
-export interface BusinessProfile {
-  businessName: string;
-  businessPhone: string;
-  pickupAddress: string;
-  businessHours: string;
-  businessType?: 'product' | 'service';
-}
-
-export interface RecentEntry {
-  customerName: string;
-  phoneNumber: string;
-  email?: string;
-  status: string;
-  delayReason?: string | null;
-  courier?: string | null;
-  channel: 'whatsapp' | 'sms' | 'email' | 'copy';
-  message: string;
-  timestamp: string;
-}
+// Re-export so existing `from '@/lib/storage'` consumers keep working.
+export type { BusinessProfile, RecentEntry };
 
 const PROFILE_KEY  = 'orderping_profile';
 const RECENT_KEY   = 'orderping_recent';
@@ -54,11 +38,12 @@ export async function fetchProfileFromSupabase(): Promise<BusinessProfile | null
     if (error || !data) return null;
 
     const profile: BusinessProfile = {
-      businessName:  data.business_name  ?? '',
-      businessPhone: data.business_phone ?? '',
-      pickupAddress: data.pickup_address ?? '',
-      businessHours: data.business_hours ?? '',
-      businessType:  (data.business_type === 'service' ? 'service' : 'product') as 'product' | 'service',
+      businessName:        data.business_name        ?? '',
+      businessPhone:       data.business_phone       ?? '',
+      pickupAddress:       data.pickup_address       ?? '',
+      businessHours:       data.business_hours       ?? '',
+      businessType:        (data.business_type === 'service' ? 'service' : 'product') as 'product' | 'service',
+      businessDescription: data.business_description ?? '',
     };
 
     await saveProfile(profile);
@@ -74,13 +59,14 @@ export async function syncProfileToSupabase(profile: BusinessProfile): Promise<v
     if (!user) return;
 
     await supabase.from('profiles').upsert({
-      id:             user.id,
-      business_name:  profile.businessName,
-      business_phone: profile.businessPhone,
-      pickup_address: profile.pickupAddress,
-      business_hours: profile.businessHours,
-      business_type:  profile.businessType ?? 'product',
-      updated_at:     new Date().toISOString(),
+      id:                   user.id,
+      business_name:        profile.businessName,
+      business_phone:       profile.businessPhone,
+      pickup_address:       profile.pickupAddress,
+      business_hours:       profile.businessHours,
+      business_type:        profile.businessType ?? 'product',
+      business_description: profile.businessDescription,
+      updated_at:           new Date().toISOString(),
     });
   } catch {}
 }
@@ -300,4 +286,32 @@ export async function getLastCourier(): Promise<string | null> {
 
 export async function saveLastCourier(name: string): Promise<void> {
   try { await AsyncStorage.setItem(LAST_COURIER_KEY, name); } catch {}
+}
+
+// ── Guest mode ────────────────────────────────────────────────────────────────
+
+const GUEST_SENT_KEY = 'orderping_guest_sent';
+const WAS_GUEST_KEY  = 'orderping_was_guest';
+
+export async function getGuestSent(): Promise<number> {
+  try {
+    const raw = await AsyncStorage.getItem(GUEST_SENT_KEY);
+    return raw ? parseInt(raw, 10) : 0;
+  } catch { return 0; }
+}
+
+export async function incrementGuestSent(): Promise<number> {
+  const next = (await getGuestSent()) + 1;
+  await AsyncStorage.setItem(GUEST_SENT_KEY, String(next));
+  return next;
+}
+
+export async function getWasGuest(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(WAS_GUEST_KEY)) === 'true';
+  } catch { return false; }
+}
+
+export async function setWasGuest(val: boolean): Promise<void> {
+  try { await AsyncStorage.setItem(WAS_GUEST_KEY, val ? 'true' : 'false'); } catch {}
 }

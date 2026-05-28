@@ -1,7 +1,14 @@
 import { Colors } from '@/constants/colors';
 
-export type Tone    = 'friendly' | 'professional' | 'apologetic' | 'reassuring';
-export type Channel = 'whatsapp' | 'sms' | 'email' | 'copy';
+// Tone and Channel live in shared/types — re-exported here for back-compat.
+export type { Tone, Channel } from '@shared/types';
+
+// Service-status preset options live in shared/service-options.ts — re-exported here.
+export {
+  SERVICE_CONFIRMED_OPTIONS, SERVICE_ON_THE_WAY_OPTIONS, SERVICE_LATE_OPTIONS,
+  SERVICE_ARRIVED_OPTIONS, SERVICE_COMPLETED_OPTIONS, SERVICE_RESCHEDULED_OPTIONS,
+  SERVICE_PARTS_OPTIONS, SERVICE_FOLLOWUP_OPTIONS,
+} from '@shared/service-options';
 
 export const RECEIVED_OPTIONS = [
   { id: 'Order received and being carefully packed for you',   icon: '✅', label: 'Received & packing now' },
@@ -53,47 +60,6 @@ export const SERVICE_STATUSES = [
   { id: 'rescheduled',       label: 'Rescheduled',  emoji: '📅', color: '#6B7280' },
   { id: 'waiting-parts',     label: 'Waiting Parts',emoji: '🔧', color: '#D4A843' },
   { id: 'follow-up',         label: 'Follow-up',    emoji: '📞', color: '#EC4899' },
-];
-
-export const SERVICE_CONFIRMED_OPTIONS = [
-  { id: 'Your appointment has been confirmed and our technician will be there on time',   icon: '✅', label: 'Confirmed on time' },
-  { id: 'Your booking is confirmed — just a reminder of the appointment details',          icon: '📅', label: 'Reminder confirmation' },
-  { id: 'Confirmed and we have everything we need to complete the job',                    icon: '🔧', label: 'All prepared' },
-];
-export const SERVICE_ON_THE_WAY_OPTIONS = [
-  { id: 'Our technician is on the way and should arrive shortly',   icon: '🚗', label: 'On the way now' },
-  { id: 'Our team has just left and is heading to you',              icon: '📍', label: 'Just left' },
-  { id: 'Almost there — about 10 to 15 minutes away',               icon: '⏱️', label: '10–15 min away' },
-];
-export const SERVICE_LATE_OPTIONS = [
-  { id: 'Running behind due to traffic but still coming today',            icon: '🚦', label: 'Traffic delay' },
-  { id: 'Running a little late due to the previous job taking longer',     icon: '🔧', label: 'Previous job overran' },
-  { id: 'Slightly delayed due to weather conditions',                       icon: '🌧️', label: 'Weather delay' },
-];
-export const SERVICE_ARRIVED_OPTIONS = [
-  { id: 'Technician has arrived on site and is getting started',   icon: '🏠', label: 'Arrived, getting started' },
-  { id: 'We have arrived and are assessing the situation',          icon: '🔍', label: 'Arrived, assessing' },
-  { id: 'Arrived and everything looks straightforward',             icon: '✅', label: 'Arrived, looks good' },
-];
-export const SERVICE_COMPLETED_OPTIONS = [
-  { id: 'Job is complete and everything has been sorted',                    icon: '✅', label: 'All done' },
-  { id: 'Service completed successfully — no further action needed',         icon: '🎉', label: 'Completed, all good' },
-  { id: 'Service completed and a follow-up visit may be needed',             icon: '📞', label: 'Done, follow-up needed' },
-];
-export const SERVICE_RESCHEDULED_OPTIONS = [
-  { id: 'Appointment rescheduled due to unforeseen circumstances',   icon: '📅', label: 'Unforeseen circumstances' },
-  { id: 'We need to reschedule due to technician availability',       icon: '👤', label: 'Technician unavailable' },
-  { id: 'Rescheduling as the required parts are not yet available',   icon: '🔧', label: 'Parts not yet available' },
-];
-export const SERVICE_PARTS_OPTIONS = [
-  { id: 'Waiting for a part to arrive before we can complete the job',              icon: '🔧', label: 'Part on order' },
-  { id: 'Special part needs to be sourced — this may take a day or two',            icon: '📦', label: 'Sourcing special part' },
-  { id: 'Materials have been delayed but we will update you as soon as they arrive', icon: '⏳', label: 'Materials delayed' },
-];
-export const SERVICE_FOLLOWUP_OPTIONS = [
-  { id: 'A follow-up visit has been scheduled to check on the work done',   icon: '📅', label: 'Follow-up booked' },
-  { id: 'Checking in to see how everything is going after our visit',        icon: '👋', label: 'Checking in' },
-  { id: 'Following up to confirm the issue has been fully resolved',         icon: '✅', label: 'Confirming resolved' },
 ];
 
 export const STATUS_BADGES: Record<string, { label: string; color: string }> = {

@@ -1,24 +1,8 @@
 import { supabase } from './supabase';
+import type { BusinessProfile, RecentEntry } from '@shared/types';
 
-export interface BusinessProfile {
-  businessName: string;
-  businessPhone: string;
-  pickupAddress: string;
-  businessHours: string;
-  businessType?: 'product' | 'service';
-}
-
-export interface RecentEntry {
-  customerName: string;
-  phoneNumber: string;
-  email?: string;
-  status: string;
-  delayReason?: string | null;
-  courier?: string | null;
-  channel: 'whatsapp' | 'sms' | 'email' | 'copy';
-  message: string;
-  timestamp: string;
-}
+// Re-export so existing `from '@/lib/storage'` consumers keep working.
+export type { BusinessProfile, RecentEntry };
 
 const PROFILE_KEY       = 'orderping_profile';
 const RECENT_KEY        = 'orderping_recent';
@@ -57,11 +41,12 @@ export async function fetchProfileFromSupabase(): Promise<BusinessProfile | null
     if (error || !data) return null;
 
     const profile: BusinessProfile = {
-      businessName:  data.business_name  ?? '',
-      businessPhone: data.business_phone ?? '',
-      pickupAddress: data.pickup_address ?? '',
-      businessHours: data.business_hours ?? '',
-      businessType:  (data.business_type === 'service' ? 'service' : 'product') as 'product' | 'service',
+      businessName:        data.business_name        ?? '',
+      businessPhone:       data.business_phone       ?? '',
+      pickupAddress:       data.pickup_address       ?? '',
+      businessHours:       data.business_hours       ?? '',
+      businessType:        (data.business_type === 'service' ? 'service' : 'product') as 'product' | 'service',
+      businessDescription: data.business_description ?? '',
     };
 
     saveProfile(profile); // cache locally
@@ -78,13 +63,14 @@ export async function syncProfileToSupabase(profile: BusinessProfile): Promise<v
     if (!user) return;
 
     await supabase.from('profiles').upsert({
-      id:             user.id,
-      business_name:  profile.businessName,
-      business_phone: profile.businessPhone,
-      pickup_address: profile.pickupAddress,
-      business_hours: profile.businessHours,
-      business_type:  profile.businessType ?? 'product',
-      updated_at:     new Date().toISOString(),
+      id:                   user.id,
+      business_name:        profile.businessName,
+      business_phone:       profile.businessPhone,
+      pickup_address:       profile.pickupAddress,
+      business_hours:       profile.businessHours,
+      business_type:        profile.businessType ?? 'product',
+      business_description: profile.businessDescription,
+      updated_at:           new Date().toISOString(),
     });
   } catch {
     // non-fatal — localStorage copy is the fallback
@@ -312,4 +298,27 @@ export function saveDraft(draft: FormDraft): void {
 
 export function clearDraft(): void {
   try { localStorage.removeItem(DRAFT_KEY); } catch {}
+}
+
+// ── Guest mode ─────────────────────────────────────────────────────────────────
+
+const GUEST_SENT_KEY = 'orderping_guest_sent';
+const WAS_GUEST_KEY  = 'orderping_was_guest';
+
+export function getGuestSent(): number {
+  try { return parseInt(localStorage.getItem(GUEST_SENT_KEY) ?? '0', 10) || 0; } catch { return 0; }
+}
+
+export function incrementGuestSent(): number {
+  const next = getGuestSent() + 1;
+  try { localStorage.setItem(GUEST_SENT_KEY, String(next)); } catch {}
+  return next;
+}
+
+export function getWasGuest(): boolean {
+  try { return localStorage.getItem(WAS_GUEST_KEY) === 'true'; } catch { return false; }
+}
+
+export function setWasGuest(val: boolean): void {
+  try { localStorage.setItem(WAS_GUEST_KEY, val ? 'true' : 'false'); } catch {}
 }
