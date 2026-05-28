@@ -2,275 +2,29 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform,
-  Share, Alert, Animated,
+  Share, Alert, Animated, Modal,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { getProfile, addRecent, getRecent, fetchAndMergeRecent, clearRecent, incrementTotalSent, getLastMilestone, setLastMilestone, getLastOpen, setLastOpen, getWeekReportDismissed, setWeekReportDismissed, getDraft, saveDraft, clearDraft, getLastCourier, saveLastCourier, type BusinessProfile, type RecentEntry, type FormDraft } from '@/lib/storage';
+import { getProfile, addRecent, getRecent, fetchAndMergeRecent, clearRecent, incrementTotalSent, getLastMilestone, setLastMilestone, getLastOpen, setLastOpen, getWeekReportDismissed, setWeekReportDismissed, getDraft, saveDraft, clearDraft, getLastCourier, saveLastCourier, getGuestSent, incrementGuestSent, setWasGuest, type BusinessProfile, type RecentEntry, type FormDraft } from '@/lib/storage';
 import { openWhatsApp, openSMS, openEmail } from '@/lib/deep-links';
+import { captureEvent, identifyUser } from '@/lib/analytics';
 import StatusNotePicker from '@/components/StatusNotePicker';
 import Confetti from '@/components/Confetti';
 import { Colors } from '@/constants/colors';
-
-interface ForgottenCustomer {
-  customerName: string;
-  phoneNumber:  string;
-  email?:       string;
-  lastStatus:   string;
-  hoursAgo:     number;
-}
-
-function getForgottenCustomers(recent: RecentEntry[]): ForgottenCustomer[] {
-  const PENDING = ['received', 'delay', 'pre-order', 'booking-confirmed', 'running-late', 'waiting-parts'];
-  const byPhone: Record<string, RecentEntry> = {};
-  for (const e of recent) {
-    if (!byPhone[e.phoneNumber] || new Date(e.timestamp) > new Date(byPhone[e.phoneNumber].timestamp))
-      byPhone[e.phoneNumber] = e;
-  }
-  const now = Date.now();
-  return Object.values(byPhone)
-    .filter(e => PENDING.includes(e.status))
-    .map(e => ({
-      customerName: e.customerName,
-      phoneNumber:  e.phoneNumber,
-      email:        e.email,
-      lastStatus:   e.status,
-      hoursAgo:     Math.floor((now - new Date(e.timestamp).getTime()) / 3600000),
-    }))
-    .filter(e => e.hoursAgo >= 24)
-    .sort((a, b) => b.hoursAgo - a.hoursAgo);
-}
-
-function getWeekKey(date: Date): string {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-  return `${d.getFullYear()}-W${weekNum}`;
-}
-
-interface WeekSummary { updates: number; customers: number; bestDay: string; }
-
-function getLastWeekSummary(recent: RecentEntry[]): WeekSummary | null {
-  const now = new Date();
-  const startOfThisWeek = new Date(now);
-  startOfThisWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  startOfThisWeek.setHours(0, 0, 0, 0);
-  const startOfLastWeek = new Date(startOfThisWeek);
-  startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
-
-  const entries = recent.filter(e => {
-    const t = new Date(e.timestamp);
-    return t >= startOfLastWeek && t < startOfThisWeek;
-  });
-  if (entries.length === 0) return null;
-
-  const uniqueCustomers = new Set(entries.map(e => e.phoneNumber)).size;
-  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const countsByDay: Record<number, number> = {};
-  entries.forEach(e => {
-    const day = new Date(e.timestamp).getDay();
-    countsByDay[day] = (countsByDay[day] ?? 0) + 1;
-  });
-  const bestDayNum = parseInt(Object.entries(countsByDay).sort((a, b) => b[1] - a[1])[0][0]);
-  return { updates: entries.length, customers: uniqueCustomers, bestDay: dayNames[bestDayNum] };
-}
-
-const RECEIVED_OPTIONS = [
-  { id: 'Order received and being carefully packed for you',   icon: '✅', label: 'Received & packing now' },
-  { id: 'Just need you to confirm your delivery address',      icon: '📍', label: 'Need delivery address' },
-  { id: 'Waiting for your payment to clear before we process', icon: '💳', label: 'Awaiting payment' },
-];
-const DELAY_OPTIONS = [
-  { id: 'The courier is running a little behind — your order is still on its way', icon: '🚚', label: 'Courier running a little late' },
-  { id: 'We are waiting for stock to arrive before we can send yours out',          icon: '📦', label: 'Waiting on stock to arrive' },
-  { id: 'We have had a high demand of orders and need just a bit more time',        icon: '⚡',  label: 'High demand, need extra time' },
-];
-const DISPATCH_OPTIONS = [
-  { id: 'already on its way to you',              icon: '✅',  label: 'Already on its way' },
-  { id: 'going out to you today',                 icon: '📬',  label: 'Going out today' },
-  { id: 'going out to you tomorrow',              icon: '📅',  label: 'Going out tomorrow' },
-  { id: 'going out to you later this week',       icon: '🗓️', label: 'Going out this week' },
-  { id: 'split into multiple parcels, all on the way', icon: '📦', label: 'Split into multiple parcels' },
-];
-const READY_OPTIONS = [
-  { id: 'Ready and waiting for you to collect',               icon: '🏪', label: 'Ready for collection now' },
-  { id: 'Will be ready for you to collect from tomorrow',     icon: '📅', label: 'Ready from tomorrow' },
-  { id: 'Ready and we would love you to collect it soon',     icon: '⚠️',  label: 'Please collect soon' },
-];
-const PREORDER_OPTIONS = [
-  { id: 'Pre-order is locked in and we are waiting for stock to arrive', icon: '🚢', label: 'Locked in, waiting on stock' },
-  { id: 'Pre-order confirmed and will be ready in 2 to 3 weeks',         icon: '📅', label: 'Ready in 2–3 weeks' },
-  { id: 'Pre-order confirmed and will be ready in 4 to 6 weeks',         icon: '🗓️', label: 'Ready in 4–6 weeks' },
-];
-
-const COURIERS = [
-  { name: 'The Courier Guy', deliveryTime: '3-5 working days' },
-  { name: 'Pep',             deliveryTime: '7-9 working days' },
-  { name: 'PostNet',         deliveryTime: '5-7 working days' },
-];
-
-const STATUSES = [
-  { id: 'received',   label: 'Received',   emoji: '📦', color: Colors.received },
-  { id: 'delay',      label: 'Delay',       emoji: '⏳', color: Colors.delay },
-  { id: 'dispatched', label: 'Dispatching', emoji: '🚚', color: Colors.dispatched },
-  { id: 'ready',      label: 'Ready',       emoji: '📍', color: Colors.ready },
-] as const;
-
-const SERVICE_STATUSES = [
-  { id: 'booking-confirmed', label: 'Confirmed',    emoji: '✅', color: '#2BA784' },
-  { id: 'on-the-way',        label: 'On the Way',   emoji: '🚗', color: '#3B82F6' },
-  { id: 'running-late',      label: 'Running Late', emoji: '⏰', color: '#E8A435' },
-  { id: 'arrived',           label: 'Arrived',      emoji: '📍', color: '#16A34A' },
-  { id: 'completed',         label: 'Completed',    emoji: '🎉', color: '#8B5CF6' },
-  { id: 'rescheduled',       label: 'Rescheduled',  emoji: '📅', color: '#6B7280' },
-  { id: 'waiting-parts',     label: 'Waiting Parts',emoji: '🔧', color: '#D4A843' },
-  { id: 'follow-up',         label: 'Follow-up',    emoji: '📞', color: '#EC4899' },
-];
-
-const SERVICE_CONFIRMED_OPTIONS = [
-  { id: 'Your appointment has been confirmed and our technician will be there on time',   icon: '✅', label: 'Confirmed on time' },
-  { id: 'Your booking is confirmed — just a reminder of the appointment details',          icon: '📅', label: 'Reminder confirmation' },
-  { id: 'Confirmed and we have everything we need to complete the job',                    icon: '🔧', label: 'All prepared' },
-];
-const SERVICE_ON_THE_WAY_OPTIONS = [
-  { id: 'Our technician is on the way and should arrive shortly',   icon: '🚗', label: 'On the way now' },
-  { id: 'Our team has just left and is heading to you',              icon: '📍', label: 'Just left' },
-  { id: 'Almost there — about 10 to 15 minutes away',               icon: '⏱️', label: '10–15 min away' },
-];
-const SERVICE_LATE_OPTIONS = [
-  { id: 'Running behind due to traffic but still coming today',            icon: '🚦', label: 'Traffic delay' },
-  { id: 'Running a little late due to the previous job taking longer',     icon: '🔧', label: 'Previous job overran' },
-  { id: 'Slightly delayed due to weather conditions',                       icon: '🌧️', label: 'Weather delay' },
-];
-const SERVICE_ARRIVED_OPTIONS = [
-  { id: 'Technician has arrived on site and is getting started',   icon: '🏠', label: 'Arrived, getting started' },
-  { id: 'We have arrived and are assessing the situation',          icon: '🔍', label: 'Arrived, assessing' },
-  { id: 'Arrived and everything looks straightforward',             icon: '✅', label: 'Arrived, looks good' },
-];
-const SERVICE_COMPLETED_OPTIONS = [
-  { id: 'Job is complete and everything has been sorted',                    icon: '✅', label: 'All done' },
-  { id: 'Service completed successfully — no further action needed',         icon: '🎉', label: 'Completed, all good' },
-  { id: 'Service completed and a follow-up visit may be needed',             icon: '📞', label: 'Done, follow-up needed' },
-];
-const SERVICE_RESCHEDULED_OPTIONS = [
-  { id: 'Appointment rescheduled due to unforeseen circumstances',   icon: '📅', label: 'Unforeseen circumstances' },
-  { id: 'We need to reschedule due to technician availability',       icon: '👤', label: 'Technician unavailable' },
-  { id: 'Rescheduling as the required parts are not yet available',   icon: '🔧', label: 'Parts not yet available' },
-];
-const SERVICE_PARTS_OPTIONS = [
-  { id: 'Waiting for a part to arrive before we can complete the job',              icon: '🔧', label: 'Part on order' },
-  { id: 'Special part needs to be sourced — this may take a day or two',            icon: '📦', label: 'Sourcing special part' },
-  { id: 'Materials have been delayed but we will update you as soon as they arrive', icon: '⏳', label: 'Materials delayed' },
-];
-const SERVICE_FOLLOWUP_OPTIONS = [
-  { id: 'A follow-up visit has been scheduled to check on the work done',   icon: '📅', label: 'Follow-up booked' },
-  { id: 'Checking in to see how everything is going after our visit',        icon: '👋', label: 'Checking in' },
-  { id: 'Following up to confirm the issue has been fully resolved',         icon: '✅', label: 'Confirming resolved' },
-];
-
-const STATUS_BADGES: Record<string, { label: string; color: string }> = {
-  // Product
-  received:           { label: 'Received',     color: Colors.received },
-  delay:              { label: 'Delayed',       color: Colors.delay },
-  dispatched:         { label: 'Dispatched',    color: Colors.dispatched },
-  ready:              { label: 'Ready',         color: Colors.ready },
-  'pre-order':        { label: 'Pre-order',     color: Colors.accent },
-  // Service
-  'booking-confirmed':{ label: 'Confirmed',     color: '#2BA784' },
-  'on-the-way':       { label: 'On the Way',    color: '#3B82F6' },
-  'running-late':     { label: 'Running Late',  color: '#E8A435' },
-  'arrived':          { label: 'Arrived',       color: '#16A34A' },
-  'completed':        { label: 'Completed',     color: '#8B5CF6' },
-  'rescheduled':      { label: 'Rescheduled',   color: '#6B7280' },
-  'waiting-parts':    { label: 'Waiting Parts', color: '#D4A843' },
-  'follow-up':        { label: 'Follow-up',     color: '#EC4899' },
-};
-
-const PRODUCT_FILTERS = ['all', 'received', 'delay', 'dispatched', 'ready', 'pre-order'] as const;
-const SERVICE_FILTERS  = ['all', 'booking-confirmed', 'on-the-way', 'running-late', 'arrived', 'completed', 'rescheduled', 'waiting-parts', 'follow-up'] as const;
-const FILTER_LABELS: Record<string, string> = {
-  all: 'All',
-  // Product
-  received: 'Received', delay: 'Delayed', dispatched: 'Dispatched', ready: 'Ready', 'pre-order': 'Pre-order',
-  // Service
-  'booking-confirmed': 'Confirmed', 'on-the-way': 'On the Way', 'running-late': 'Running Late',
-  'arrived': 'Arrived', 'completed': 'Completed', 'rescheduled': 'Rescheduled',
-  'waiting-parts': 'Waiting Parts', 'follow-up': 'Follow-up',
-};
-const CHANNEL_ICONS: Record<string, string> = { whatsapp: '💬', sms: '📱', email: '✉️', copy: '📋' };
-
-type Tone    = 'friendly' | 'professional' | 'apologetic' | 'reassuring';
-type Channel = 'whatsapp' | 'sms' | 'email' | 'copy';
-
-function getGreeting(name: string): string {
-  const h    = new Date().getHours();
-  const time = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
-  return `Good ${time}, ${name.split(' ')[0]} 👋`;
-}
-
-function relativeTime(iso: string): string {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1)  return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-type FrustrationLevel = 'none' | 'moderate' | 'high';
-interface FrustrationResult {
-  level:   FrustrationLevel;
-  signals: string[];
-  context: string; // sent to AI
-}
-
-function detectFrustration(phone: string, recent: RecentEntry[]): FrustrationResult {
-  const history = recent
-    .filter(e => e.phoneNumber === phone)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  if (history.length === 0) return { level: 'none', signals: [], context: '' };
-
-  let score = 0;
-  const signals: string[] = [];
-  const now  = Date.now();
-  const latest = history[0];
-  const oldest = history[history.length - 1];
-  const delays = history.filter(e => e.status === 'delay' || e.status === 'running-late');
-  const hoursSinceLatest = (now - new Date(latest.timestamp).getTime()) / 3600000;
-  const hoursSinceFirst  = (now - new Date(oldest.timestamp).getTime()) / 3600000;
-  const pendingStatuses  = ['received', 'delay', 'pre-order', 'booking-confirmed', 'running-late', 'waiting-parts'];
-
-  if (delays.length >= 3) { score += 50; signals.push(`${delays.length} delay updates`); }
-  else if (delays.length === 2) { score += 35; signals.push('2 delay updates'); }
-  else if (delays.length === 1) { score += 15; signals.push('1 delay update'); }
-
-  if (history.length >= 5) { score += 20; signals.push(`${history.length} messages sent`); }
-  else if (history.length >= 3) { score += 10; signals.push(`${history.length} messages sent`); }
-
-  if (pendingStatuses.includes(latest.status) && hoursSinceLatest >= 72) {
-    score += 25; signals.push('waiting 3+ days');
-  } else if (pendingStatuses.includes(latest.status) && hoursSinceLatest >= 48) {
-    score += 15; signals.push('waiting 2+ days');
-  }
-
-  if (hoursSinceFirst >= 168) { score += 15; signals.push('order 7+ days old'); }
-
-  if (latest.status === 'delay') { score += 10; }
-
-  const level: FrustrationLevel = score >= 55 ? 'high' : score >= 25 ? 'moderate' : 'none';
-
-  const context = level === 'high'
-    ? `This customer has been waiting a long time and received multiple delay updates (${signals.join(', ')}). They may be frustrated or anxious. Be genuinely empathetic, acknowledge their patience explicitly, and make them feel like a priority — this is a trust-repair moment.`
-    : level === 'moderate'
-    ? `This customer may be experiencing some frustration (${signals.join(', ')}). Be warmer and more reassuring than usual.`
-    : '';
-
-  return { level, signals, context };
-}
+import { getGreeting, relativeTime } from '@/lib/format';
+import { getForgottenCustomers, getWeekKey, getLastWeekSummary, type ForgottenCustomer, type WeekSummary } from '@/lib/engagement';
+import { detectFrustration, type FrustrationLevel, type FrustrationResult } from '@/lib/frustration';
+import {
+  RECEIVED_OPTIONS, DELAY_OPTIONS, DISPATCH_OPTIONS, READY_OPTIONS, PREORDER_OPTIONS,
+  COURIERS, STATUSES, SERVICE_STATUSES,
+  SERVICE_CONFIRMED_OPTIONS, SERVICE_ON_THE_WAY_OPTIONS, SERVICE_LATE_OPTIONS,
+  SERVICE_ARRIVED_OPTIONS, SERVICE_COMPLETED_OPTIONS, SERVICE_RESCHEDULED_OPTIONS,
+  SERVICE_PARTS_OPTIONS, SERVICE_FOLLOWUP_OPTIONS,
+  STATUS_BADGES, PRODUCT_FILTERS, SERVICE_FILTERS, FILTER_LABELS, CHANNEL_ICONS,
+  type Tone, type Channel,
+} from '@/lib/status-config';
 
 export default function MainScreen() {
   const router = useRouter();
@@ -332,6 +86,8 @@ export default function MainScreen() {
   // Guest mode
   const [isGuest, setIsGuest] = useState(false);
   const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
+  const [guestSent, setGuestSent] = useState(0);
+  const [showGuestGate, setShowGuestGate] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -342,7 +98,10 @@ export default function MainScreen() {
       if (!p) { router.replace('/(setup)'); return; }
       setProfile(p);
       setGreeting(getGreeting(p.businessName || 'there'));
-      setIsGuest(user?.is_anonymous ?? false);
+      const guest = user?.is_anonymous ?? false;
+      setIsGuest(guest);
+      if (guest) getGuestSent().then(setGuestSent);
+      if (user) identifyUser(user.id, { businessType: p.businessType ?? 'product' });
 
       const recent = await fetchAndMergeRecent();
       const today = new Date().toDateString();
@@ -463,48 +222,84 @@ export default function MainScreen() {
   const handleExtract = async () => {
     if (!orderText.trim()) return;
     setExtracting(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res  = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/extract-order`, {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/extract-order`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type':  'application/json',
           'Authorization': `Bearer ${session?.access_token ?? ''}`,
         },
-        body: JSON.stringify({ orderText }),
+        body:   JSON.stringify({ orderText }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Server error' }));
+        if (res.status === 401) {
+          Alert.alert('Session expired', 'Please sign out and sign in again.');
+          await supabase.auth.signOut();
+          return;
+        }
+        if (res.status === 429) {
+          Alert.alert('Slow down', 'Too many requests. Wait a moment and try again.');
+          return;
+        }
+        Alert.alert('Error', err.error ?? 'Could not extract order details.');
+        return;
+      }
       const data = await res.json();
       if (data.name)  setCustomerName(data.name);
       if (data.phone) setPhoneNumber(data.phone);
       if (data.email) setEmail(data.email);
       setOrderText('');
-    } catch { Alert.alert('Error', 'Could not extract order details.'); }
-    finally  { setExtracting(false); }
+    } catch (err: unknown) {
+      clearTimeout(timeout);
+      if ((err as Error).name === 'AbortError') {
+        Alert.alert('Timed out', 'The request took too long. Check your connection.');
+      } else {
+        Alert.alert('Error', 'Could not extract order details. Check your connection.');
+      }
+    } finally { setExtracting(false); }
   };
 
   const selectedCourier = COURIERS.find(c => c.name === courier);
   const effectiveCourierName = courier === 'other' ? (otherCourierName.trim() || null) : (selectedCourier?.name ?? null);
 
   const handleGenerate = async () => {
+    if (isGuest && guestSent >= 10) {
+      setShowGuestGate(true);
+      return;
+    }
     if (!customerName.trim() || !phoneNumber.trim() || !status) {
       Alert.alert('Missing info', 'Enter a name, phone number, and pick a status.');
       return;
     }
+    if (!profile?.businessDescription?.trim()) {
+      Alert.alert('Profile incomplete', 'Please add a business description in your profile so messages match your business style.');
+      return;
+    }
     setGenerating(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res  = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/generate-message`, {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/generate-message`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type':  'application/json',
           'Authorization': `Bearer ${session?.access_token ?? ''}`,
         },
+        signal: controller.signal,
         body: JSON.stringify({
           businessType:        profile?.businessType ?? 'product',
           customerName:        customerName.trim(),
           status,
           tone,
           businessName:        profile?.businessName ?? '',
+          businessDescription: profile?.businessDescription ?? '',
           // Product-only fields
           receivedNote,
           dispatchDate,
@@ -522,10 +317,38 @@ export default function MainScreen() {
           frustrationContext: frustration.context || null,
         }),
       });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Server error' }));
+        if (res.status === 401) {
+          Alert.alert('Session expired', 'Please sign out and sign in again.');
+          await supabase.auth.signOut();
+          return;
+        }
+        if (res.status === 429) {
+          Alert.alert('Slow down', 'Too many requests. Wait a moment and try again.');
+          return;
+        }
+        Alert.alert('Error', err.error ?? 'Could not generate message.');
+        return;
+      }
       const data = await res.json();
+      if (data.message) {
+        captureEvent('message_generated', {
+          status,
+          tone,
+          businessType: profile?.businessType ?? 'product',
+        });
+      }
       setMessage(data.message ?? '');
-    } catch { Alert.alert('Error', 'Could not generate message. Check your connection.'); }
-    finally  { setGenerating(false); }
+    } catch (err: unknown) {
+      clearTimeout(timeout);
+      if ((err as Error).name === 'AbortError') {
+        Alert.alert('Timed out', 'The request took too long. Check your connection.');
+      } else {
+        Alert.alert('Error', 'Could not generate message. Check your connection.');
+      }
+    } finally { setGenerating(false); }
   };
 
   const handleSend = async (channel: Channel) => {
@@ -544,6 +367,13 @@ export default function MainScreen() {
     // stats
     const newTotal = await incrementTotalSent();
     setTodayCount(prev => prev + 1);
+
+    // guest limit
+    if (isGuest) {
+      const newGuestSent = await incrementGuestSent();
+      setGuestSent(newGuestSent);
+      if (newGuestSent >= 10) setShowGuestGate(true);
+    }
     getRecent().then(r => { setLastEntry(r[0] ?? null); setForgotten(getForgottenCustomers(r)); });
 
     // milestone confetti at 10, 50, 100
@@ -551,6 +381,8 @@ export default function MainScreen() {
     const lastMs = await getLastMilestone();
     const hit = MILESTONES.filter(m => m > lastMs && newTotal >= m).pop();
     if (hit) { await setLastMilestone(hit); setMilestone(hit); setShowConfetti(true); }
+
+    captureEvent('message_sent', { channel, status: status ?? '' });
 
     if      (channel === 'whatsapp') openWhatsApp(phoneNumber, message);
     else if (channel === 'sms')      openSMS(phoneNumber, message);
@@ -779,12 +611,54 @@ export default function MainScreen() {
       <ScrollView ref={scrollRef} style={s.root} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {Hero}
 
-        {/* Guest banner */}
+        {/* Guest gate modal */}
+        <Modal visible={showGuestGate} transparent animationType="fade">
+          <View style={s.gateOverlay}>
+            <View style={s.gateCard}>
+              <Text style={s.gateEmoji}>🔒</Text>
+              <Text style={s.gateTitle}>You've used your 10 free updates</Text>
+              <Text style={s.gateBody}>
+                Sign up free to keep going — your data and history stay exactly as they are.
+              </Text>
+              <TouchableOpacity
+                style={s.gateSignUp}
+                onPress={async () => {
+                  await setWasGuest(false);
+                  await supabase.auth.signOut();
+                  router.replace('/(auth)');
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={s.gateSignUpText}>Sign Up Free →</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.gateSignIn}
+                onPress={async () => {
+                  await setWasGuest(false);
+                  await supabase.auth.signOut();
+                  router.replace('/(auth)');
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={s.gateSignInText}>I already have an account</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Guest banner — warning when approaching limit */}
         {isGuest && !guestBannerDismissed && (
-          <View style={s.guestBanner}>
+          <View style={[s.guestBanner, guestSent >= 7 && s.guestBannerWarn]}>
             <View style={s.guestBannerBody}>
-              <Text style={s.guestBannerText}>Guest mode — data saved on this device only.</Text>
+              {guestSent >= 7 ? (
+                <Text style={[s.guestBannerText, s.guestBannerWarnText]}>
+                  ⚠️ {10 - guestSent} free update{10 - guestSent !== 1 ? 's' : ''} left — sign up to keep going.
+                </Text>
+              ) : (
+                <Text style={s.guestBannerText}>Guest mode — data saved on this device only.</Text>
+              )}
               <TouchableOpacity onPress={async () => {
+                await setWasGuest(false);
                 await supabase.auth.signOut();
                 router.replace('/(auth)');
               }}>
@@ -1359,11 +1233,23 @@ const s = StyleSheet.create({
   statsLabel:  { fontSize: 13, color: Colors.primary, fontWeight: '600', letterSpacing: 0.2, marginTop: 4, opacity: 0.7 },
 
   // Weekly report card
-  guestBanner:     { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderWidth: 1.5, borderColor: '#FDE68A', borderRadius: 14, marginHorizontal: 16, marginTop: 16, padding: 14 },
-  guestBannerBody: { flex: 1 },
-  guestBannerText: { fontSize: 13, color: '#92400E', marginBottom: 4 },
-  guestBannerLink: { fontSize: 13, fontWeight: '700', color: '#D97706' },
-  guestBannerClose: { paddingLeft: 12 },
+  guestBanner:         { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderWidth: 1.5, borderColor: '#FDE68A', borderRadius: 14, marginHorizontal: 16, marginTop: 16, padding: 14 },
+  guestBannerWarn:     { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' },
+  guestBannerBody:     { flex: 1 },
+  guestBannerText:     { fontSize: 13, color: '#92400E', marginBottom: 4 },
+  guestBannerWarnText: { color: '#9A3412' },
+  guestBannerLink:     { fontSize: 13, fontWeight: '700', color: '#D97706' },
+  guestBannerClose:    { paddingLeft: 12 },
+  // Gate modal
+  gateOverlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  gateCard:      { backgroundColor: Colors.surface, borderRadius: 24, padding: 28, alignItems: 'center', width: '100%', maxWidth: 340, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
+  gateEmoji:     { fontSize: 44, marginBottom: 16 },
+  gateTitle:     { fontSize: 20, fontWeight: '800', color: Colors.text, textAlign: 'center', marginBottom: 10, letterSpacing: -0.3 },
+  gateBody:      { fontSize: 15, color: Colors.textMuted, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
+  gateSignUp:    { width: '100%', backgroundColor: Colors.primary, borderRadius: 16, padding: 16, alignItems: 'center', marginBottom: 10, minHeight: 54, justifyContent: 'center', shadowColor: Colors.primary, shadowOpacity: 0.35, shadowRadius: 12, elevation: 4 },
+  gateSignUpText:{ color: 'white', fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
+  gateSignIn:    { width: '100%', borderWidth: 1.5, borderColor: Colors.border, borderRadius: 16, padding: 14, alignItems: 'center', minHeight: 50, justifyContent: 'center' },
+  gateSignInText:{ fontSize: 14, fontWeight: '600', color: Colors.textMuted },
   weekCard:        { backgroundColor: '#EFF6FF', borderWidth: 1.5, borderColor: '#BFDBFE', borderRadius: 18, marginHorizontal: 16, marginTop: 16, padding: 18 },
   weekCardHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   weekCardTitle:   { fontSize: 16, fontWeight: '700', color: '#1E40AF', letterSpacing: -0.1 },
