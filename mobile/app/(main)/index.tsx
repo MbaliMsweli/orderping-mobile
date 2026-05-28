@@ -29,6 +29,12 @@ export default function MainScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [profile, setProfile]   = useState<BusinessProfile | null>(null);
   const [greeting, setGreeting] = useState('');
+  const generateControllerRef   = useRef<AbortController | null>(null);
+
+  // Abort any in-flight generate request when the screen unmounts
+  useEffect(() => {
+    return () => { generateControllerRef.current?.abort(); };
+  }, []);
 
   const {
     orderText, setOrderText,
@@ -215,6 +221,7 @@ export default function MainScreen() {
     }
     setGenerating(true);
     const controller = new AbortController();
+    generateControllerRef.current = controller;
     const timeout = setTimeout(() => controller.abort(), 20000);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -285,6 +292,13 @@ export default function MainScreen() {
 
   const handleSend = async (channel: Channel) => {
     if (!message) return;
+
+    // Open the channel first — only count after the send fires
+    if      (channel === 'whatsapp') openWhatsApp(phoneNumber, message);
+    else if (channel === 'sms')      openSMS(phoneNumber, message);
+    else if (channel === 'email')    openEmail(email, profile?.businessName ?? '', message);
+    else                             await Share.share({ message });
+
     await addRecent({
       customerName: customerName.trim(),
       phoneNumber:  phoneNumber.trim(),
@@ -315,11 +329,6 @@ export default function MainScreen() {
     if (hit) { await setLastMilestone(hit); setMilestone(hit); setShowConfetti(true); }
 
     captureEvent('message_sent', { channel, status: status ?? '' });
-
-    if      (channel === 'whatsapp') openWhatsApp(phoneNumber, message);
-    else if (channel === 'sms')      openSMS(phoneNumber, message);
-    else if (channel === 'email')    openEmail(email, profile?.businessName ?? '', message);
-    else                             await Share.share({ message });
   };
 
   const handleClear = () => {

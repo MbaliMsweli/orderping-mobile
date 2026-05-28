@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, KeyboardAvoidingView, Platform, Share,
@@ -34,6 +35,13 @@ export default function RecentList({
   handleRecentTap, handleUseContact, handleRecentSend, handleClearHistory,
   profile,
 }: Props) {
+  // Local input value updates instantly; debounced value drives the filter
+  const [inputValue, setInputValue] = useState(searchQuery);
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(inputValue), 200);
+    return () => clearTimeout(t);
+  }, [inputValue]);
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={s.root} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
@@ -46,8 +54,8 @@ export default function RecentList({
         <View style={s.searchRow}>
           <TextInput
             style={s.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={inputValue}
+            onChangeText={setInputValue}
             placeholder="Search by name or number…"
             placeholderTextColor={Colors.textMuted}
             autoCapitalize="none"

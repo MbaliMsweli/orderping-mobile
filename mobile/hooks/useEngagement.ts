@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Alert } from 'react-native';
 import { getRecent, type RecentEntry } from '@/lib/storage';
 import { detectFrustration, type FrustrationResult } from '@/lib/frustration';
@@ -25,8 +25,12 @@ export function useEngagement({ phoneNumber }: { phoneNumber: string }) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery]     = useState('');
 
-  // Mood detection
-  const [frustration, setFrustration] = useState<FrustrationResult>({ level: 'none', signals: [], context: '' });
+  // Mood detection — derived value, no extra render cycle needed
+  const frustration: FrustrationResult = useMemo(() => {
+    if (!phoneNumber.trim() || recentList.length === 0)
+      return { level: 'none', signals: [], context: '' };
+    return detectFrustration(phoneNumber.trim(), recentList);
+  }, [phoneNumber, recentList]);
 
   // Guest mode
   const [isGuest, setIsGuest]                         = useState(false);
@@ -50,15 +54,6 @@ export function useEngagement({ phoneNumber }: { phoneNumber: string }) {
   useEffect(() => {
     if (showRecent) getRecent().then(setRecentList);
   }, [showRecent]);
-
-  // Recompute frustration whenever phone number or history changes
-  useEffect(() => {
-    if (!phoneNumber.trim() || recentList.length === 0) {
-      setFrustration({ level: 'none', signals: [], context: '' });
-      return;
-    }
-    setFrustration(detectFrustration(phoneNumber.trim(), recentList));
-  }, [phoneNumber, recentList]);
 
   return {
     todayCount, setTodayCount,
