@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { useOrderForm } from '@/hooks/useOrderForm';
+import { useEngagement } from '@/hooks/useEngagement';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform,
@@ -7,7 +9,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { getProfile, addRecent, getRecent, fetchAndMergeRecent, clearRecent, incrementTotalSent, getLastMilestone, setLastMilestone, getLastOpen, setLastOpen, getWeekReportDismissed, setWeekReportDismissed, getDraft, saveDraft, clearDraft, getLastCourier, saveLastCourier, getGuestSent, incrementGuestSent, setWasGuest, type BusinessProfile, type RecentEntry, type FormDraft } from '@/lib/storage';
+import { getProfile, addRecent, getRecent, fetchAndMergeRecent, clearRecent, incrementTotalSent, getLastMilestone, setLastMilestone, getLastOpen, setLastOpen, getWeekReportDismissed, setWeekReportDismissed, getDraft, clearDraft, getLastCourier, getGuestSent, incrementGuestSent, setWasGuest, type BusinessProfile, type RecentEntry } from '@/lib/storage';
 import { openWhatsApp, openSMS, openEmail } from '@/lib/deep-links';
 import { captureEvent, identifyUser } from '@/lib/analytics';
 import StatusNotePicker from '@/components/StatusNotePicker';
@@ -15,7 +17,6 @@ import Confetti from '@/components/Confetti';
 import { Colors } from '@/constants/colors';
 import { getGreeting, relativeTime } from '@/lib/format';
 import { getForgottenCustomers, getWeekKey, getLastWeekSummary, type ForgottenCustomer, type WeekSummary } from '@/lib/engagement';
-import { detectFrustration, type FrustrationLevel, type FrustrationResult } from '@/lib/frustration';
 import {
   RECEIVED_OPTIONS, DELAY_OPTIONS, DISPATCH_OPTIONS, READY_OPTIONS, PREORDER_OPTIONS,
   COURIERS, STATUSES, SERVICE_STATUSES,
@@ -32,62 +33,62 @@ export default function MainScreen() {
   const [profile, setProfile]   = useState<BusinessProfile | null>(null);
   const [greeting, setGreeting] = useState('');
 
-  // Paste
-  const [orderText, setOrderText]   = useState('');
-  const [extracting, setExtracting] = useState(false);
+  const {
+    orderText, setOrderText,
+    extracting, setExtracting,
+    customerName, setCustomerName,
+    phoneNumber, setPhoneNumber,
+    email, setEmail,
+    courier, setCourier,
+    otherCourierName, setOtherCourierName,
+    waybill, setWaybill,
+    status, setStatus,
+    receivedNote, setReceivedNote,
+    delayReason, setDelayReason,
+    dispatchDate, setDispatchDate,
+    readyNote, setReadyNote,
+    preOrderNote, setPreOrderNote,
+    serviceNote, setServiceNote,
+    appointmentTime, setAppointmentTime,
+    tone, setTone,
+    message, setMessage,
+    generating, setGenerating,
+    clearStatusNotes,
+    resetForm,
+    loadDraft,
+  } = useOrderForm();
 
-  // Customer
-  const [customerName, setCustomerName] = useState('');
-  const [phoneNumber, setPhoneNumber]   = useState('');
-  const [email, setEmail]               = useState('');
+  const {
+    todayCount, setTodayCount,
+    showConfetti, setShowConfetti,
+    milestone, setMilestone,
+    lastEntry, setLastEntry,
+    forgotten, setForgotten,
+    weekSummary, setWeekSummary,
+    showWeekCard, setShowWeekCard,
+    hoursAway, setHoursAway,
+    showWelcomeBack, setShowWelcomeBack,
+    showRecent, setShowRecent,
+    recentList, setRecentList,
+    recentFilter, setRecentFilter,
+    expandedIndex, setExpandedIndex,
+    searchQuery, setSearchQuery,
+    frustration,
+    isGuest, setIsGuest,
+    guestBannerDismissed, setGuestBannerDismissed,
+    guestSent, setGuestSent,
+    showGuestGate, setShowGuestGate,
+  } = useEngagement({ phoneNumber });
 
-  // Courier
-  const [courier, setCourier]               = useState<string | null>(null);
-  const [otherCourierName, setOtherCourierName] = useState('');
-  const [waybill, setWaybill] = useState('');
-
-  // Status + notes + tone + message
-  const [status, setStatus]             = useState<string | null>(null);
-  const [receivedNote, setReceivedNote] = useState<string | null>(null);
-  const [delayReason, setDelayReason]   = useState<string | null>(null);
-  const [dispatchDate, setDispatchDate] = useState<string | null>(null);
-  const [readyNote, setReadyNote]       = useState<string | null>(null);
-  const [preOrderNote, setPreOrderNote] = useState<string | null>(null);
-  const [serviceNote, setServiceNote]   = useState<string | null>(null);
-  const [appointmentTime, setAppointmentTime] = useState('');
-  const [tone, setTone]                 = useState<Tone>('friendly');
-  const [message, setMessage]           = useState('');
-  const [generating, setGenerating]     = useState(false);
-
-  // Stats + reminder
-  const [todayCount, setTodayCount]         = useState(0);
-  const [showConfetti, setShowConfetti]     = useState(false);
-  const [milestone, setMilestone]           = useState<number | null>(null);
-  const [lastEntry, setLastEntry]           = useState<RecentEntry | null>(null);
-  const [forgotten, setForgotten]           = useState<ForgottenCustomer[]>([]);
-
-  // Retention cards
-  const [weekSummary, setWeekSummary]       = useState<WeekSummary | null>(null);
-  const [showWeekCard, setShowWeekCard]     = useState(false);
-  const [hoursAway, setHoursAway]           = useState(0);
-  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
-
-  // Recent
-  const [showRecent, setShowRecent]       = useState(false);
-  const [recentList, setRecentList]       = useState<RecentEntry[]>([]);
-  const [recentFilter, setRecentFilter]   = useState('all');
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery]     = useState('');
-
-  // Mood detection
-  const [frustration, setFrustration] = useState<FrustrationResult>({ level: 'none', signals: [], context: '' });
+  // Bridge: auto-set tone to apologetic when frustration is detected
   const toneAutoSet = useRef(false);
-
-  // Guest mode
-  const [isGuest, setIsGuest] = useState(false);
-  const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
-  const [guestSent, setGuestSent] = useState(0);
-  const [showGuestGate, setShowGuestGate] = useState(false);
+  useEffect(() => {
+    if (frustration.level !== 'none' && !toneAutoSet.current) {
+      setTone('apologetic');
+      toneAutoSet.current = true;
+    }
+    if (frustration.level === 'none') toneAutoSet.current = false;
+  }, [frustration.level]);
 
   useEffect(() => {
     (async () => {
@@ -133,79 +134,13 @@ export default function MainScreen() {
       // Restore in-progress draft, or fall back to last-used courier
       const draft = await getDraft();
       if (draft) {
-        if (draft.customerName)     setCustomerName(draft.customerName);
-        if (draft.phoneNumber)      setPhoneNumber(draft.phoneNumber);
-        if (draft.email)            setEmail(draft.email);
-        if (draft.status)           setStatus(draft.status);
-        if (draft.receivedNote)     setReceivedNote(draft.receivedNote);
-        if (draft.delayReason)      setDelayReason(draft.delayReason);
-        if (draft.dispatchDate)     setDispatchDate(draft.dispatchDate);
-        if (draft.readyNote)        setReadyNote(draft.readyNote);
-        if (draft.preOrderNote)     setPreOrderNote(draft.preOrderNote);
-        if (draft.serviceNote)      setServiceNote(draft.serviceNote);
-        if (draft.appointmentTime)  setAppointmentTime(draft.appointmentTime);
-        if (draft.tone)             setTone(draft.tone as Tone);
-        if (draft.courier)          setCourier(draft.courier);
-        if (draft.otherCourierName) setOtherCourierName(draft.otherCourierName);
-        if (draft.waybill)          setWaybill(draft.waybill);
-        if (draft.message)          setMessage(draft.message);
+        loadDraft(draft);
       } else {
         const lastCourier = await getLastCourier();
         if (lastCourier) setCourier(lastCourier);
       }
     })();
   }, []);
-
-  useEffect(() => {
-    if (!milestone) return;
-    const msgs: Record<number, string> = {
-      10:  "10 messages sent! You're on a roll 🚀",
-      50:  "50 messages sent! Your customers love you 🏆",
-      100: "100 messages! You're an OrderPing pro 🌟",
-    };
-    Alert.alert(`🎉 ${milestone} orders!`, msgs[milestone] ?? `${milestone} messages sent!`);
-    setMilestone(null);
-  }, [milestone]);
-
-  useEffect(() => {
-    if (showRecent) getRecent().then(setRecentList);
-  }, [showRecent]);
-
-  // Auto-save form as draft (debounced 400 ms) — cleared on "Clear & Start New"
-  useEffect(() => {
-    if (!customerName && !phoneNumber && !status && !message) return;
-    const t = setTimeout(() => {
-      saveDraft({ customerName, phoneNumber, email, status, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, serviceNote, appointmentTime, tone, courier, otherCourierName, waybill, message });
-    }, 400);
-    return () => clearTimeout(t);
-  }, [customerName, phoneNumber, email, status, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, serviceNote, appointmentTime, tone, courier, otherCourierName, waybill, message]);
-
-  // Remember the last courier used across sessions
-  useEffect(() => {
-    if (courier && courier !== 'other') saveLastCourier(courier);
-  }, [courier]);
-
-  // Customer mood detection — runs whenever phone number or history changes
-  useEffect(() => {
-    if (!phoneNumber.trim() || recentList.length === 0) {
-      setFrustration({ level: 'none', signals: [], context: '' });
-      toneAutoSet.current = false;
-      return;
-    }
-    const result = detectFrustration(phoneNumber.trim(), recentList);
-    setFrustration(result);
-    if (result.level !== 'none' && !toneAutoSet.current) {
-      setTone('apologetic');
-      toneAutoSet.current = true;
-    }
-    if (result.level === 'none') toneAutoSet.current = false;
-  }, [phoneNumber, recentList]);
-
-  const clearStatusNotes = () => {
-    setReceivedNote(null); setDelayReason(null);
-    setDispatchDate(null); setReadyNote(null); setPreOrderNote(null);
-    setServiceNote(null);
-  };
 
   const handleStatusPress = (id: string) => {
     setStatus(id);
