@@ -38,8 +38,10 @@ Update this file after every meaningful implementation change.
 
 ## Next Up
 
-- Push `rebuild` and confirm the next Vercel git deploy of `orderflow-ai` succeeds end to end
-  (the `@shared` resolution that previously failed should now build remotely).
+- **Set the Vercel Root Directory to `orderflow-ai`** (dashboard) — this is the remaining
+  blocker for GitHub auto-deploys. Verified via Vercel build logs that git deploys fail with
+  "Couldn't find any pages or app directory" because Vercel builds at the repo root. After
+  this, `git push` to master deploys cleanly and the dirty CLI deploys can be retired.
 
 ## Open Questions
 
@@ -52,10 +54,11 @@ Update this file after every meaningful implementation change.
   history, and server-written logs — chosen to keep customer data private and the daily flow
   fast/offline-tolerant.
 - **Shared logic in `orderflow-ai/shared/`**: single source of truth for cross-app code to
-  avoid mobile/web drift. Originally at the repo root, which broke Vercel (project root is
-  `orderflow-ai/`, so `../shared` was never uploaded). **Resolved** by relocating it inside
-  `orderflow-ai/` (`@shared/* → ./shared/*`); mobile reaches in via Metro `watchFolders` +
-  tsconfig. No duplicated copy, no Vercel dashboard change needed.
+  avoid mobile/web drift. Originally at the repo root, which broke the web build (`../shared`
+  was outside the app). Relocated inside `orderflow-ai/` (`@shared/* → ./shared/*`); mobile
+  reaches in via Metro `watchFolders` + tsconfig. This fixes the `@shared` resolution but is
+  only **one** of the two deploy blockers — see Next Up for the Vercel Root Directory issue
+  that still blocks GitHub auto-deploys.
 - **Fail-closed rate limiting**: in production the API blocks if Upstash is misconfigured,
   preferring availability loss over unbounded Claude spend/abuse.
 - **No in-app sending**: deep links hand off to the device's WhatsApp/SMS/Email apps;
