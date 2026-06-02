@@ -11,3 +11,8 @@ dist/
 *.tsbuildinfo
 .DS_Store
 *.pem
+
+# Claude Code — local/personal state (keep shared settings.json tracked)
+.claude/settings.local.json
+.claude/worktrees/
+.playwright-mcp/

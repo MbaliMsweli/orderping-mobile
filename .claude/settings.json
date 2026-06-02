@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "PowerShell(eas --version 2>&1)",
+      "PowerShell($env:CI = \"1\"; Set-Location \"C:\\\\Users\\\\Mbali\\\\OneDrive\\\\Desktop\\\\OrderPing\\\\mobile\"; eas update --branch production --platform ios --message \"Service business improvements and storage updates\" 2>&1)",
+      "PowerShell(Set-Location \"c:\\\\Users\\\\Mbali\\\\OneDrive\\\\Desktop\\\\OrderPing\\\\mobile\" ; \\(Get-Content 'app/\\(main\\)/index.tsx' | Measure-Object -Line\\).Lines)",
+      "PowerShell(Set-Location \"c:\\\\Users\\\\Mbali\\\\OneDrive\\\\Desktop\\\\OrderPing\\\\mobile\"; \\(Get-Content 'app/\\(main\\)/index.tsx' | Measure-Object -Line\\).Lines)",
+      "mcp__plugin_playwright_playwright__browser_console_messages",
+      "mcp__plugin_playwright_playwright__browser_network_requests"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Mbali\\op-deploy\\orderflow-ai"
+    ]
+  }
+}
