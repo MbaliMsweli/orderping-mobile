@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { corsHeaders } from '@/lib/cors';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { enforceUsageLimits, getClientIp } from '@/lib/usage-guard';
 import { log, logException } from '@/lib/logger';
 
 if (!process.env.ANTHROPIC_API_KEY)             throw new Error('ANTHROPIC_API_KEY is not set');
@@ -100,36 +101,49 @@ export async function OPTIONS(req: NextRequest) {
   });
 }
 
+export const maxDuration = 30;
+
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin');
-
-  // ── Auth ────────────────────────────────────────────────────────────────────
-  const authHeader = req.headers.get('authorization');
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders(origin) });
-  }
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders(origin) });
-  }
-
-  // ── Rate limit ───────────────────────────────────────────────────────────────
-  const { limited, remaining, reset } = await checkRateLimit(user.id);
-  const rlHeaders = {
-    ...corsHeaders(origin),
-    'RateLimit-Remaining': String(remaining),
-    'RateLimit-Reset':     String(reset),
-  };
-  if (limited) {
-    log('warn', 'rate_limited', { userId: user.id, endpoint: 'generate-message' });
-    return NextResponse.json(
-      { error: 'Too many requests. Please wait a moment.' },
-      { status: 429, headers: rlHeaders },
-    );
-  }
+  const cors = corsHeaders(origin);
 
   try {
+    // ── Auth ────────────────────────────────────────────────────────────────────
+    const authHeader = req.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
+    }
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
+    }
+
+    // ── Rate limit (per user) ─────────────────────────────────────────────────────
+    const { limited, remaining, reset } = await checkRateLimit(user.id);
+    const rlHeaders = {
+      ...cors,
+      'RateLimit-Remaining': String(remaining),
+      'RateLimit-Reset':     String(reset),
+    };
+    if (limited) {
+      log('warn', 'rate_limited', { userId: user.id, endpoint: 'generate-message' });
+      return NextResponse.json(
+        { error: 'Too many requests. Please wait a moment.' },
+        { status: 429, headers: rlHeaders },
+      );
+    }
+
+    // ── Abuse / cost guards (per-IP, guest lifetime cap, global daily cap) ─────────
+    const guard = await enforceUsageLimits({
+      userId:      user.id,
+      isAnonymous: user.is_anonymous ?? false,
+      ip:          getClientIp(req),
+    });
+    if (!guard.ok) {
+      return NextResponse.json({ error: guard.error }, { status: guard.status, headers: rlHeaders });
+    }
+
     // ── Validation ─────────────────────────────────────────────────────────────
     const raw = await req.json();
     const parsed = bodySchema.safeParse(raw);
@@ -194,14 +208,37 @@ Business: ${businessName}`;
     const systemPrompt = isService ? SERVICE_SYSTEM_PROMPT : PRODUCT_SYSTEM_PROMPT;
 
     // ── Claude call ─────────────────────────────────────────────────────────────
-    const response = await anthropic.messages.create({
-      model:      'claude-sonnet-4-6',
-      max_tokens: 256,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
-    });
+    let response;
+    try {
+      response = await anthropic.messages.create(
+        {
+          model:      'claude-sonnet-4-6',
+          max_tokens: 256,
+          system:     systemPrompt,
+          messages:   [{ role: 'user', content: userPrompt }],
+        },
+        { timeout: 25_000, maxRetries: 2 },
+      );
+    } catch (err) {
+      if (err instanceof Anthropic.APIError && (err.status === 429 || err.status === 529)) {
+        log('warn', 'anthropic_overloaded', { status: err.status, endpoint: 'generate-message' });
+        return NextResponse.json(
+          { error: 'High demand right now — please try again in a moment.' },
+          { status: 503, headers: rlHeaders },
+        );
+      }
+      throw err;
+    }
 
-    const message = (response.content[0] as { type: string; text: string }).text;
+    const block = response.content[0];
+    const message = block && block.type === 'text' ? block.text : '';
+    if (!message) {
+      logException(new Error('Claude returned no text block'), { endpoint: 'generate-message' });
+      return NextResponse.json(
+        { error: 'Could not generate a message. Please try again.' },
+        { status: 502, headers: rlHeaders },
+      );
+    }
     const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
 
     log('info', 'generate_message', {
@@ -226,7 +263,7 @@ Business: ${businessName}`;
     logException(err, { endpoint: 'generate-message' });
     return NextResponse.json(
       { error: 'Something went wrong. Please try again.' },
-      { status: 500, headers: corsHeaders(origin) },
+      { status: 500, headers: cors },
     );
   }
 }
