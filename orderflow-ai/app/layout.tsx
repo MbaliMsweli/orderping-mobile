@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { Suspense } from "react";
+import { PostHogProvider } from "@/lib/posthog";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -30,7 +32,11 @@ export default function RootLayout({
             alt=""
           />
         </noscript>
-        {children}
+        <Suspense>
+          <PostHogProvider>
+            {children}
+          </PostHogProvider>
+        </Suspense>
         <Script id="meta-pixel" strategy="afterInteractive">
           {`!function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?

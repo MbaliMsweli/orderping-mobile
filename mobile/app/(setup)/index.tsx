@@ -17,8 +17,9 @@ export default function SetupScreen() {
   const [businessName, setBusinessName]     = useState('');
   const [businessPhone, setBusinessPhone]   = useState('');
   const [pickupAddress, setPickupAddress]   = useState('');
-  const [businessHours, setBusinessHours]   = useState('');
-  const [saving, setSaving]                 = useState(false);
+  const [businessHours, setBusinessHours]         = useState('');
+  const [businessDescription, setBusinessDescription] = useState('');
+  const [saving, setSaving]                         = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -34,6 +35,7 @@ export default function SetupScreen() {
         setBusinessPhone(profile.businessPhone);
         setPickupAddress(profile.pickupAddress);
         setBusinessHours(profile.businessHours);
+        setBusinessDescription(profile.businessDescription ?? '');
       }
       setLoading(false);
     })();
@@ -44,14 +46,19 @@ export default function SetupScreen() {
       Alert.alert('Required', 'Please enter your business name.');
       return;
     }
+    if (!businessDescription.trim()) {
+      Alert.alert('Required', 'Please describe your business so messages match your style.');
+      return;
+    }
     setSaving(true);
     try {
       const profile = {
         businessType,
-        businessName:  businessName.trim(),
-        businessPhone: businessPhone.trim(),
-        pickupAddress: pickupAddress.trim(),
-        businessHours: businessHours.trim(),
+        businessName:        businessName.trim(),
+        businessPhone:       businessPhone.trim(),
+        pickupAddress:       pickupAddress.trim(),
+        businessHours:       businessHours.trim(),
+        businessDescription: businessDescription.trim(),
       };
       await saveProfile(profile);
       if (!isGuest) await syncProfileToSupabase(profile);
@@ -151,10 +158,27 @@ export default function SetupScreen() {
                 placeholder="42 Main Rd, Sandton" placeholderTextColor={Colors.textLight} />
             </View>
           )}
-          <View style={[s.field, { marginBottom: 0 }]}>
+          <View style={s.field}>
             <Text style={s.label}>{businessType === 'service' ? 'Operating Hours (optional)' : 'Business Hours (optional)'}</Text>
             <TextInput style={s.input} value={businessHours} onChangeText={setBusinessHours}
               placeholder="Mon–Fri 9am–5pm, Sat 9am–1pm" placeholderTextColor={Colors.textLight} />
+          </View>
+          <View style={[s.field, { marginBottom: 0 }]}>
+            <Text style={s.label}>About Your Business *</Text>
+            <TextInput
+              style={[s.input, { minHeight: 90, textAlignVertical: 'top', paddingTop: 12 }]}
+              value={businessDescription}
+              onChangeText={setBusinessDescription}
+              placeholder={
+                businessType === 'service'
+                  ? 'e.g. We fix electrical faults and install lighting in homes and offices.'
+                  : 'e.g. We sell handmade skincare products and hair care bundles.'
+              }
+              placeholderTextColor={Colors.textLight}
+              multiline
+              numberOfLines={3}
+              maxLength={500}
+            />
           </View>
         </View>
 

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import BrandIcon from '@/components/BrandIcon';
 import { supabase } from '@/lib/supabase';
-import { getProfile, fetchProfileFromSupabase } from '@/lib/storage';
+import { getProfile, fetchProfileFromSupabase, getWasGuest, setWasGuest } from '@/lib/storage';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 
@@ -22,16 +22,20 @@ export default function AuthPage() {
   const [resetSent, setResetSent] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  // If already signed in, redirect away
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
         let profile = getProfile();
         if (!profile) profile = await fetchProfileFromSupabase();
         router.replace(profile ? '/' : '/setup');
-      } else {
-        setChecking(false);
+        return;
       }
+      // Auto-continue as guest for returning guest users
+      if (getWasGuest() && getProfile()) {
+        const { error: err } = await supabase.auth.signInAnonymously();
+        if (!err) { router.replace('/'); return; }
+      }
+      setChecking(false);
     });
   }, [router]);
 
@@ -64,6 +68,7 @@ export default function AuthPage() {
     try {
       const { error: err } = await supabase.auth.signInAnonymously();
       if (err) throw err;
+      setWasGuest(true);
       const profile = getProfile();
       router.replace(profile ? '/' : '/setup');
     } catch {
@@ -103,6 +108,7 @@ export default function AuthPage() {
         if (err) throw err;
       }
 
+      setWasGuest(false);
       let profile = getProfile();
       if (!profile) profile = await fetchProfileFromSupabase();
       router.replace(profile ? '/' : '/setup');

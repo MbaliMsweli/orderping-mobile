@@ -1,0 +1,75 @@
+name: CI / Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── Type check ─────────────────────────────────────────────────────────────
+  type-check:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: orderflow-ai/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: orderflow-ai
+
+      - name: Type check
+        run: npx tsc --noEmit
+        working-directory: orderflow-ai
+
+  # ─── Preview deploy (PRs only) ──────────────────────────────────────────────
+  deploy-preview:
+    name: Preview deploy
+    if: github.event_name == 'pull_request'
+    needs: type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: orderflow-ai/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: orderflow-ai
+
+      - name: Deploy preview
+        run: npx vercel deploy --token=${{ secrets.VERCEL_TOKEN }} 2>&1
+        working-directory: orderflow-ai
+
+  # ─── Production deploy (main branch only) ───────────────────────────────────
+  deploy-production:
+    name: Production deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: orderflow-ai/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: orderflow-ai
+
+      - name: Deploy to production
+        run: npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} 2>&1
+        working-directory: orderflow-ai

@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { getProfile, fetchProfileFromSupabase } from '@/lib/storage';
+import { getProfile, fetchProfileFromSupabase, getWasGuest, setWasGuest } from '@/lib/storage';
 import { Colors } from '@/constants/colors';
 
 type Mode = 'signin' | 'signup' | 'forgot';
@@ -13,12 +13,24 @@ type Mode = 'signin' | 'signup' | 'forgot';
 export default function AuthScreen() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('signin');
+  const [checking, setChecking] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetSent, setResetSent] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const [wasGuest, profile] = await Promise.all([getWasGuest(), getProfile()]);
+      if (wasGuest && profile) {
+        const { error: err } = await supabase.auth.signInAnonymously();
+        if (!err) { router.replace('/(main)'); return; }
+      }
+      setChecking(false);
+    })();
+  }, []);
 
   const handleSubmit = async () => {
     setError('');
@@ -37,6 +49,7 @@ export default function AuthScreen() {
         const { error: err } = await supabase.auth.signUp({ email: email.trim(), password });
         if (err) throw err;
       }
+      await setWasGuest(false);
       let profile = await getProfile();
       if (!profile) profile = await fetchProfileFromSupabase();
       router.replace(profile ? '/(main)' : '/(setup)');
@@ -60,6 +73,7 @@ export default function AuthScreen() {
     try {
       const { error: err } = await supabase.auth.signInAnonymously();
       if (err) throw err;
+      await setWasGuest(true);
       const profile = await getProfile();
       router.replace(profile ? '/(main)' : '/(setup)');
     } catch {
@@ -90,6 +104,8 @@ export default function AuthScreen() {
       setLoading(false);
     }
   };
+
+  if (checking) return null;
 
   // ── Forgot password view ──────────────────────────────────────────────────
   if (mode === 'forgot') {

@@ -40,6 +40,12 @@
         "projectId": "c8e3b2d1-088e-42cf-a19f-5fcfdf7fc72e"
       }
     },
-    "owner": "mbalisto"
+    "owner": "mbalisto",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/c8e3b2d1-088e-42cf-a19f-5fcfdf7fc72e"
+    }
   }
 }

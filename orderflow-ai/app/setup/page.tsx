@@ -39,7 +39,7 @@ function TypePickerStep({ onSelect }: { onSelect: (t: 'product' | 'service') => 
           This personalises your statuses and messages.
         </p>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="type-grid">
         {TYPE_OPTIONS.map(opt => (
           <button
             key={opt.value}
@@ -178,15 +178,27 @@ export default function SetupPage() {
               }}
               style={{
                 marginTop: 'var(--space-8)',
-                width: '100%', padding: '13px',
+                width: '100%', padding: '13px', minHeight: 48,
                 borderRadius: 'var(--radius-xl)',
                 border: '1.5px solid var(--border)',
-                background: 'transparent',
-                color: 'var(--text-muted)',
+                background: 'var(--surface)',
+                color: 'var(--text-secondary)',
                 cursor: 'pointer',
                 fontFamily: 'var(--font-body)', fontSize: '0.9375rem', fontWeight: 600,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 transition: 'all var(--transition-fast)',
+              }}
+              onMouseEnter={e => {
+                const b = e.currentTarget;
+                b.style.borderColor = 'var(--error)';
+                b.style.color = 'var(--error)';
+                b.style.background = 'var(--error-soft)';
+              }}
+              onMouseLeave={e => {
+                const b = e.currentTarget;
+                b.style.borderColor = 'var(--border)';
+                b.style.color = 'var(--text-secondary)';
+                b.style.background = 'var(--surface)';
               }}
             >
               <LogOut size={16} />

@@ -28,7 +28,11 @@ export default function ToneSelector({ selected, onSelect, businessType = 'produ
       }}>
         Tone
       </p>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: tones.length === 4 ? '1fr 1fr' : `repeat(${tones.length}, 1fr)`,
+        gap: 8,
+      }}>
         {tones.map(({ id, label }) => {
           const isActive = selected === id;
           return (

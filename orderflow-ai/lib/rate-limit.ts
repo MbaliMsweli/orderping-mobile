@@ -19,22 +19,34 @@ function getRatelimit(): Ratelimit | null {
   return ratelimit;
 }
 
+export interface RateLimitResult {
+  limited:   boolean;
+  remaining: number;
+  reset:     number; // unix timestamp (ms) when the window resets
+}
+
 /**
- * Returns true if the request should be blocked (rate limit exceeded).
+ * Check rate limit for a given identifier (user ID).
  *
- * In production without Upstash configured, this fails CLOSED — all requests
- * are blocked to prevent unlimited billing attacks on the Anthropic API.
+ * In production without Upstash configured, fails CLOSED — all requests
+ * are blocked to protect the Anthropic API budget.
  * In development without Upstash, requests are allowed through.
  */
-export async function isRateLimited(identifier: string): Promise<boolean> {
+export async function checkRateLimit(identifier: string): Promise<RateLimitResult> {
   const rl = getRatelimit();
   if (!rl) {
     if (process.env.NODE_ENV === 'production') {
-      console.error('[rate-limit] UPSTASH_REDIS_REST_URL not configured — blocking request to protect Anthropic API budget');
-      return true;
+      console.error('[rate-limit] UPSTASH_REDIS_REST_URL not configured — blocking request');
+      return { limited: true, remaining: 0, reset: Date.now() + 60_000 };
     }
-    return false;
+    return { limited: false, remaining: 20, reset: Date.now() + 60_000 };
   }
-  const { success } = await rl.limit(identifier);
-  return !success;
+  const { success, remaining, reset } = await rl.limit(identifier);
+  return { limited: !success, remaining, reset };
+}
+
+/** @deprecated Use checkRateLimit instead */
+export async function isRateLimited(identifier: string): Promise<boolean> {
+  const { limited } = await checkRateLimit(identifier);
+  return limited;
 }

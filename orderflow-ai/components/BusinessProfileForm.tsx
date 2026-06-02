@@ -53,9 +53,11 @@ export default function BusinessProfileForm({
   const [businessName, setBusinessName]   = useState('');
   const [businessPhone, setBusinessPhone] = useState('');
   const [pickupAddress, setPickupAddress] = useState('');
-  const [businessHours, setBusinessHours] = useState('');
-  const [nameError, setNameError]         = useState('');
-  const [saved, setSaved]                 = useState(false);
+  const [businessHours, setBusinessHours]               = useState('');
+  const [businessDescription, setBusinessDescription]   = useState('');
+  const [nameError, setNameError]                       = useState('');
+  const [descriptionError, setDescriptionError]         = useState('');
+  const [saved, setSaved]                               = useState(false);
 
   useEffect(() => {
     const p = getProfile();
@@ -65,6 +67,7 @@ export default function BusinessProfileForm({
       setBusinessPhone(p.businessPhone || '');
       setPickupAddress(p.pickupAddress || '');
       setBusinessHours(p.businessHours || '');
+      setBusinessDescription(p.businessDescription || '');
     } else {
       setBusinessType(initialType ?? 'product');
     }
@@ -76,13 +79,19 @@ export default function BusinessProfileForm({
       return;
     }
     setNameError('');
+    if (!businessDescription.trim()) {
+      setDescriptionError('Please describe your business');
+      return;
+    }
+    setDescriptionError('');
 
     const profile: BusinessProfile = {
       businessType,
-      businessName:  businessName.trim(),
-      businessPhone: businessPhone.trim(),
-      pickupAddress: businessType === 'product' ? pickupAddress.trim() : '',
-      businessHours: businessHours.trim(),
+      businessName:        businessName.trim(),
+      businessPhone:       businessPhone.trim(),
+      pickupAddress:       businessType === 'product' ? pickupAddress.trim() : '',
+      businessHours:       businessHours.trim(),
+      businessDescription: businessDescription.trim(),
     };
 
     saveProfile(profile);
@@ -233,6 +242,34 @@ export default function BusinessProfileForm({
           placeholder="Mon-Fri 9am-5pm, Sat 9am-1pm"
           style={inputStyle}
         />
+      </div>
+
+      {/* About Your Business */}
+      <div>
+        <label style={labelStyle}>About Your Business *</label>
+        <textarea
+          value={businessDescription}
+          onChange={(e) => { setBusinessDescription(e.target.value); setDescriptionError(''); }}
+          placeholder={
+            businessType === 'service'
+              ? 'e.g. We fix electrical faults and install lighting in homes and offices.'
+              : 'e.g. We sell handmade skincare products and hair care bundles.'
+          }
+          maxLength={500}
+          rows={3}
+          style={{
+            ...inputStyle,
+            minHeight: 88,
+            resize: 'vertical',
+            lineHeight: 1.5,
+            paddingTop: 12,
+          }}
+        />
+        {descriptionError && (
+          <p style={{ marginTop: 4, fontSize: '0.8125rem', color: 'var(--error)', fontFamily: 'var(--font-body)' }}>
+            {descriptionError}
+          </p>
+        )}
       </div>
 
       {/* Save button */}

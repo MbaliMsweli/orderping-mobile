@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { isRateLimited } from '@/lib/rate-limit';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { corsHeaders } from '@/lib/cors';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { log, logException } from '@/lib/logger';
 
-if (!process.env.ANTHROPIC_API_KEY)         throw new Error('ANTHROPIC_API_KEY is not set');
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL)  throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set');
+if (!process.env.ANTHROPIC_API_KEY)             throw new Error('ANTHROPIC_API_KEY is not set');
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL)      throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set');
 if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is not set');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -27,6 +29,7 @@ const bodySchema = z.object({
     'completed', 'rescheduled', 'waiting-parts', 'follow-up',
   ]),
   businessName:        z.string().trim().min(1).max(500),
+  businessDescription: z.string().trim().min(1).max(500),
   tone:                z.enum(['friendly', 'professional', 'apologetic', 'reassuring']).default('friendly'),
   // Product fields
   orderItems:          z.string().trim().max(500).nullish().transform(v => v || null),
@@ -51,6 +54,7 @@ const PRODUCT_SYSTEM_PROMPT = `Write a WhatsApp/SMS order update from a small bu
 
 Rules:
 - Use the customer's first name naturally and warmly
+- Use the business description to match vocabulary and personality — a handmade skincare brand should feel warm and artisanal; a hardware supplier should feel confident and practical
 - 30–50 words max
 - Lead with reassurance — the customer should feel looked after from the very first word
 - If specific items are provided, mention them naturally ("your body butter and serum"). Otherwise say "your order"
@@ -70,6 +74,7 @@ const SERVICE_SYSTEM_PROMPT = `Write a WhatsApp/SMS service update from a small 
 
 Rules:
 - Use the customer's first name naturally
+- Use the business description to match vocabulary and tone — an electrician should sound competent and direct; a beauty salon should feel warm and personal
 - 30–50 words max
 - Lead with clarity — the customer should know exactly what's happening from the very first word
 - Tone: friendly (warm, conversational, 1–2 emoji) / professional (polished, no emoji) / apologetic (genuinely empathetic, honest, calm — own the situation without over-apologising) / reassuring (calm and confident, puts the customer at ease, 1 emoji max)
@@ -98,6 +103,7 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin');
 
+  // ── Auth ────────────────────────────────────────────────────────────────────
   const authHeader = req.headers.get('authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!token) {
@@ -108,20 +114,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders(origin) });
   }
 
-  if (await isRateLimited(user.id)) {
-    return NextResponse.json({ error: 'Too many requests. Please wait a moment.' }, { status: 429, headers: corsHeaders(origin) });
+  // ── Rate limit ───────────────────────────────────────────────────────────────
+  const { limited, remaining, reset } = await checkRateLimit(user.id);
+  const rlHeaders = {
+    ...corsHeaders(origin),
+    'RateLimit-Remaining': String(remaining),
+    'RateLimit-Reset':     String(reset),
+  };
+  if (limited) {
+    log('warn', 'rate_limited', { userId: user.id, endpoint: 'generate-message' });
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait a moment.' },
+      { status: 429, headers: rlHeaders },
+    );
   }
 
   try {
+    // ── Validation ─────────────────────────────────────────────────────────────
     const raw = await req.json();
     const parsed = bodySchema.safeParse(raw);
     if (!parsed.success) {
       const message = parsed.error.issues[0]?.message ?? 'Invalid request';
-      return NextResponse.json({ error: message }, { status: 400, headers: corsHeaders(origin) });
+      return NextResponse.json({ error: message }, { status: 400, headers: rlHeaders });
     }
 
     const {
-      businessType, customerName, status, businessName, tone, orderItems,
+      businessType, customerName, status, businessName, businessDescription, tone, orderItems,
       receivedNote, dispatchDate, courierName, courierDeliveryTime,
       waybillNumber, delayReason, readyNote, preOrderNote,
       pickupAddress, businessHours,
@@ -136,6 +154,7 @@ export async function POST(req: NextRequest) {
 Customer: ${customerName}
 Status: ${status}
 Business: ${businessName}
+Business context: ${businessDescription}
 Tone: ${tone}`;
 
     if (isService) {
@@ -174,17 +193,40 @@ Tone: ${tone}`;
 
     const systemPrompt = isService ? SERVICE_SYSTEM_PROMPT : PRODUCT_SYSTEM_PROMPT;
 
+    // ── Claude call ─────────────────────────────────────────────────────────────
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model:      'claude-sonnet-4-6',
       max_tokens: 256,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userPrompt }],
     });
 
     const message = (response.content[0] as { type: string; text: string }).text;
-    return NextResponse.json({ message }, { headers: corsHeaders(origin) });
+    const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
+
+    log('info', 'generate_message', {
+      userId:      user.id,
+      status,
+      businessType,
+      tone,
+      tokensUsed,
+    });
+
+    // ── Usage logging (fire-and-forget, non-blocking) ──────────────────────────
+    supabaseAdmin.from('usage_logs').insert({
+      user_id:     user.id,
+      endpoint:    'generate-message',
+      tokens_used: tokensUsed,
+    }).then(({ error }) => {
+      if (error) log('warn', 'usage_log_failed', { userId: user.id, error: error.message });
+    });
+
+    return NextResponse.json({ message }, { headers: rlHeaders });
   } catch (err) {
-    console.error('generate-message error:', (err as Error).message);
-    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500, headers: corsHeaders(origin) });
+    logException(err, { endpoint: 'generate-message' });
+    return NextResponse.json(
+      { error: 'Something went wrong. Please try again.' },
+      { status: 500, headers: corsHeaders(origin) },
+    );
   }
 }
