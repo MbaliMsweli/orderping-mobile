@@ -1,4 +1,4 @@
-import PostHog from 'posthog-react-native';
+import type PostHog from 'posthog-react-native';
 
 const POSTHOG_KEY  = process.env.EXPO_PUBLIC_POSTHOG_KEY  ?? '';
 const POSTHOG_HOST = process.env.EXPO_PUBLIC_POSTHOG_HOST ?? 'https://app.posthog.com';
@@ -6,13 +6,22 @@ const POSTHOG_HOST = process.env.EXPO_PUBLIC_POSTHOG_HOST ?? 'https://app.postho
 let client: PostHog | null = null;
 
 function getClient(): PostHog | null {
+  // No key configured (e.g. production builds without analytics) → never touch the native module.
   if (!POSTHOG_KEY) return null;
   if (!client) {
-    client = new PostHog(POSTHOG_KEY, {
-      host:    POSTHOG_HOST,
-      // Disable in dev — comment out this line to test tracking locally
-      disabled: __DEV__,
-    });
+    try {
+      // Lazy require so the posthog-react-native NATIVE module is only loaded when analytics
+      // is actually configured. A static import would crash on any build that ships the JS
+      // (e.g. an OTA update) without the native module embedded.
+      const PostHogCtor = require('posthog-react-native').default;
+      client = new PostHogCtor(POSTHOG_KEY, {
+        host:    POSTHOG_HOST,
+        // Disable in dev — comment out this line to test tracking locally
+        disabled: __DEV__,
+      });
+    } catch {
+      return null;
+    }
   }
   return client;
 }
