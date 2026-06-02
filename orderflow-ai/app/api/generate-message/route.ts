@@ -29,7 +29,7 @@ const bodySchema = z.object({
     'completed', 'rescheduled', 'waiting-parts', 'follow-up',
   ]),
   businessName:        z.string().trim().min(1).max(500),
-  businessDescription: z.string().trim().min(1).max(500),
+  businessDescription: z.string().trim().max(500).nullish().transform(v => v || ''),
   tone:                z.enum(['friendly', 'professional', 'apologetic', 'reassuring']).default('friendly'),
   // Product fields
   orderItems:          z.string().trim().max(500).nullish().transform(v => v || null),
@@ -153,9 +153,9 @@ export async function POST(req: NextRequest) {
     let userPrompt = `<update>
 Customer: ${customerName}
 Status: ${status}
-Business: ${businessName}
-Business context: ${businessDescription}
-Tone: ${tone}`;
+Business: ${businessName}`;
+    if (businessDescription) userPrompt += `\nBusiness context: ${businessDescription}`;
+    userPrompt += `\nTone: ${tone}`;
 
     if (isService) {
       if (appointmentTime) userPrompt += `\nAppointment time: ${appointmentTime}`;
