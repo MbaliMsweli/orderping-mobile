@@ -1,6 +1,7 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { log } from '@/lib/logger';
+import { GUEST_FREE_LIMIT } from '@shared/types';
 
 /**
  * Abuse / cost guards layered ON TOP OF the per-user rate limit (lib/rate-limit.ts).
@@ -42,9 +43,9 @@ function getIpLimiter(): Ratelimit | null {
   return ipLimiter;
 }
 
-// Tunable via env; sensible defaults. GUEST_LIFETIME_CAP mirrors the client gate (10).
+// Tunable via env; sensible defaults. GUEST_LIFETIME_CAP mirrors the client gate (GUEST_FREE_LIMIT).
 const IP_PER_MIN          = Number(process.env.IP_RATE_PER_MIN     ?? 60);
-const GUEST_LIFETIME_CAP  = Number(process.env.GUEST_LIFETIME_CAP  ?? 10);
+const GUEST_LIFETIME_CAP  = Number(process.env.GUEST_LIFETIME_CAP  ?? GUEST_FREE_LIMIT);
 const GLOBAL_DAILY_CAP    = Number(process.env.GLOBAL_DAILY_CAP    ?? 0); // 0 = disabled
 const GUEST_KEY_TTL_SEC   = 60 * 60 * 24 * 30; // 30d — anon ids are ephemeral
 
@@ -54,10 +55,15 @@ export interface GuardResult {
   error?:  string;
 }
 
-/** Best-effort client IP from Vercel's forwarding headers. */
+/**
+ * Best-effort client IP, trusting only headers Vercel's edge sets itself.
+ * `x-forwarded-for`'s leftmost entry is client-supplied and trivially spoofable
+ * (an attacker can rotate a fake IP every request) — `x-vercel-forwarded-for`
+ * is appended by Vercel's edge network and can't be overridden by the client.
+ */
 export function getClientIp(req: Request): string {
-  const xff = req.headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0]!.trim();
+  const vercelXff = req.headers.get('x-vercel-forwarded-for');
+  if (vercelXff) return vercelXff.split(',')[0]!.trim();
   return req.headers.get('x-real-ip')?.trim() || 'unknown';
 }
 

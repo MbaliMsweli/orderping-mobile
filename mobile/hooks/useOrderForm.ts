@@ -11,6 +11,7 @@ export function useOrderForm() {
   const [customerName, setCustomerName] = useState('');
   const [phoneNumber, setPhoneNumber]   = useState('');
   const [email, setEmail]               = useState('');
+  const [orderItems, setOrderItems]     = useState<string | null>(null);
 
   // Courier
   const [courier, setCourier]                   = useState<string | null>(null);
@@ -39,11 +40,11 @@ export function useOrderForm() {
       saveDraft({
         customerName, phoneNumber, email, status,
         receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, serviceNote,
-        appointmentTime, tone, courier, otherCourierName, waybill, message,
+        appointmentTime, tone, courier, otherCourierName, waybill, message, orderItems,
       });
     }, 400);
     return () => clearTimeout(t);
-  }, [customerName, phoneNumber, email, status, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, serviceNote, appointmentTime, tone, courier, otherCourierName, waybill, message]);
+  }, [customerName, phoneNumber, email, status, receivedNote, delayReason, dispatchDate, readyNote, preOrderNote, serviceNote, appointmentTime, tone, courier, otherCourierName, waybill, message, orderItems]);
 
   // Remember the last courier used across sessions
   useEffect(() => {
@@ -56,11 +57,19 @@ export function useOrderForm() {
     setServiceNote(null);
   };
 
-  const resetForm = () => {
-    setOrderText(''); setCustomerName(''); setPhoneNumber(''); setEmail('');
+  // Clears order-specific fields but keeps customer name/phone/email — used when
+  // re-using a contact from Recent History to start a fresh order for them.
+  const resetOrderFields = () => {
+    setOrderText('');
     setCourier(null); setOtherCourierName(''); setWaybill('');
     setAppointmentTime(''); setStatus(null); setMessage(''); setTone('friendly');
+    setOrderItems(null);
     clearStatusNotes();
+  };
+
+  const resetForm = () => {
+    setCustomerName(''); setPhoneNumber(''); setEmail('');
+    resetOrderFields();
   };
 
   const loadDraft = (draft: FormDraft) => {
@@ -80,6 +89,7 @@ export function useOrderForm() {
     if (draft.otherCourierName) setOtherCourierName(draft.otherCourierName);
     if (draft.waybill)          setWaybill(draft.waybill);
     if (draft.message)          setMessage(draft.message);
+    if (draft.orderItems)       setOrderItems(draft.orderItems);
   };
 
   return {
@@ -88,6 +98,7 @@ export function useOrderForm() {
     customerName, setCustomerName,
     phoneNumber, setPhoneNumber,
     email, setEmail,
+    orderItems, setOrderItems,
     courier, setCourier,
     otherCourierName, setOtherCourierName,
     waybill, setWaybill,
@@ -104,6 +115,7 @@ export function useOrderForm() {
     generating, setGenerating,
     clearStatusNotes,
     resetForm,
+    resetOrderFields,
     loadDraft,
   };
 }

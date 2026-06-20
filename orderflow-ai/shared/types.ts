@@ -25,6 +25,11 @@ export interface RecentEntry {
 export type Tone    = 'friendly' | 'professional' | 'apologetic' | 'reassuring';
 export type Channel = 'whatsapp' | 'sms' | 'email' | 'copy';
 
+// Client-side guest gate. The server-side backstop (orderflow-ai/lib/usage-guard.ts,
+// GUEST_LIFETIME_CAP) defaults to this same number but is independently
+// env-overridable — the client gate is a UX nicety, not the enforcement point.
+export const GUEST_FREE_LIMIT = 10;
+
 export type FrustrationLevel = 'none' | 'moderate' | 'high';
 
 export interface FrustrationResult {

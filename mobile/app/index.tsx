@@ -11,25 +11,30 @@ export default function Index() {
 
   useEffect(() => {
     (async () => {
-      // getUser() validates the JWT server-side; getSession() only reads local cache
-      const [cachedProfile, { data: { user } }] = await Promise.all([
-        getProfile(),
-        supabase.auth.getUser(),
-      ]);
+      try {
+        // getUser() validates the JWT server-side; getSession() only reads local cache
+        const [cachedProfile, { data: { user } }] = await Promise.all([
+          getProfile(),
+          supabase.auth.getUser(),
+        ]);
 
-      if (!user) {
+        if (!user) {
+          router.replace('/(auth)');
+          return;
+        }
+
+        if (cachedProfile) {
+          if (!user.is_anonymous) syncProfileToSupabase(cachedProfile);
+          router.replace('/(main)');
+        } else if (user.is_anonymous) {
+          router.replace('/(setup)');
+        } else {
+          const remoteProfile = await fetchProfileFromSupabase();
+          router.replace(remoteProfile ? '/(main)' : '/(setup)');
+        }
+      } catch {
+        // Network/auth failure during the check — fail safe rather than hang on the spinner forever.
         router.replace('/(auth)');
-        return;
-      }
-
-      if (cachedProfile) {
-        if (!user.is_anonymous) syncProfileToSupabase(cachedProfile);
-        router.replace('/(main)');
-      } else if (user.is_anonymous) {
-        router.replace('/(setup)');
-      } else {
-        const remoteProfile = await fetchProfileFromSupabase();
-        router.replace(remoteProfile ? '/(main)' : '/(setup)');
       }
     })();
   }, []);

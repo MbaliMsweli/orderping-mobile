@@ -1,23 +1,32 @@
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { log, logException } from '@/lib/logger';
 
-// Called by Vercel Cron (vercel.json) every minute.
-// Authorization is via CRON_SECRET — set this in Vercel env vars.
+function isAuthorized(req: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const authHeader = req.headers.get('authorization') ?? '';
+  const expected = `Bearer ${secret}`;
+  const a = Buffer.from(authHeader);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+// Called by Vercel Cron (vercel.json) daily. Authorization is via CRON_SECRET — set in Vercel env vars.
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET) {
+    logException(new Error('CRON_SECRET not configured'), { endpoint: 'worker/process-jobs' });
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+  }
+  if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    const { data: jobs, error } = await supabaseAdmin
-      .from('notification_jobs')
-      .select('*')
-      .eq('status', 'pending')
-      .lte('scheduled_for', new Date().toISOString())
-      .lt('attempts', 3)
-      .limit(50);
+    // Atomic claim: SELECT + UPDATE in one round trip via RPC so two overlapping
+    // worker runs can never pick up the same row (SKIP LOCKED under the hood).
+    const { data: jobs, error } = await supabaseAdmin.rpc('claim_notification_jobs', { p_limit: 50 });
 
     if (error) throw error;
     if (!jobs || jobs.length === 0) {
@@ -52,11 +61,7 @@ type JobRow = {
 };
 
 async function processJob(job: JobRow): Promise<void> {
-  await supabaseAdmin
-    .from('notification_jobs')
-    .update({ status: 'processing' })
-    .eq('id', job.id);
-
+  // job.status is already 'processing' — set atomically by claim_notification_jobs().
   try {
     // Delivery provider calls go here when a provider is configured.
     // Example: await sendViaTwilio(job), await sendViaResend(job)

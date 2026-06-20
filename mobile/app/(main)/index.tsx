@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useOrderForm } from '@/hooks/useOrderForm';
 import { useEngagement } from '@/hooks/useEngagement';
 import {
@@ -23,6 +23,7 @@ import { Colors } from '@/constants/colors';
 import { getGreeting } from '@/lib/format';
 import { getForgottenCustomers, getWeekKey, getLastWeekSummary } from '@/lib/engagement';
 import { COURIERS, STATUS_BADGES, type Tone, type Channel } from '@/lib/status-config';
+import { GUEST_FREE_LIMIT } from '@shared/types';
 
 export default function MainScreen() {
   const router = useRouter();
@@ -55,9 +56,11 @@ export default function MainScreen() {
     appointmentTime, setAppointmentTime,
     tone, setTone,
     message, setMessage,
+    orderItems, setOrderItems,
     generating, setGenerating,
     clearStatusNotes,
     resetForm,
+    resetOrderFields,
     loadDraft,
   } = useOrderForm();
 
@@ -74,7 +77,8 @@ export default function MainScreen() {
     showRecent, setShowRecent,
     recentList, setRecentList,
     recentFilter, setRecentFilter,
-    expandedIndex, setExpandedIndex,
+    filteredRecent,
+    expandedKey, setExpandedKey,
     searchQuery, setSearchQuery,
     frustration,
     isGuest, setIsGuest,
@@ -107,16 +111,25 @@ export default function MainScreen() {
       if (guest) getGuestSent().then(setGuestSent);
       if (user) identifyUser(user.id, { businessType: p.businessType ?? 'product' });
 
-      const recent = await fetchAndMergeRecent();
-      const today = new Date().toDateString();
+      // Independent reads — batch instead of awaiting one at a time on cold start.
+      const todayDate = new Date();
+      const isMonday = todayDate.getDay() === 1;
+      const [recent, lastOpen, draft, lastCourier, weekDismissed] = await Promise.all([
+        fetchAndMergeRecent(),
+        getLastOpen(),
+        getDraft(),
+        getLastCourier(),
+        isMonday ? getWeekReportDismissed() : Promise.resolve(null),
+      ]);
+      setLastOpen();
+
+      const today = todayDate.toDateString();
       setRecentList(recent);
       setTodayCount(recent.filter(e => new Date(e.timestamp).toDateString() === today).length);
       setLastEntry(recent[0] ?? null);
       setForgotten(getForgottenCustomers(recent));
 
       // Session tracking
-      const lastOpen = await getLastOpen();
-      await setLastOpen();
       const hoursSince = lastOpen ? Math.floor((Date.now() - lastOpen) / 3600000) : 0;
       if (hoursSince >= 48) {
         setHoursAway(Math.floor(hoursSince / 24));
@@ -124,23 +137,19 @@ export default function MainScreen() {
       }
 
       // Weekly report card — show on Mondays only
-      const todayDate = new Date();
-      if (todayDate.getDay() === 1) {
+      if (isMonday) {
         const weekKey = getWeekKey(todayDate);
-        const dismissed = await getWeekReportDismissed();
-        if (dismissed !== weekKey) {
+        if (weekDismissed !== weekKey) {
           const summary = getLastWeekSummary(recent);
           if (summary) { setWeekSummary(summary); setShowWeekCard(true); }
         }
       }
 
       // Restore in-progress draft, or fall back to last-used courier
-      const draft = await getDraft();
       if (draft) {
         loadDraft(draft);
-      } else {
-        const lastCourier = await getLastCourier();
-        if (lastCourier) setCourier(lastCourier);
+      } else if (lastCourier) {
+        setCourier(lastCourier);
       }
     })();
   }, []);
@@ -192,6 +201,7 @@ export default function MainScreen() {
       if (data.name)  setCustomerName(data.name);
       if (data.phone) setPhoneNumber(data.phone);
       if (data.email) setEmail(data.email);
+      if (data.items) setOrderItems(data.items);
       setOrderText('');
     } catch (err: unknown) {
       clearTimeout(timeout);
@@ -207,7 +217,7 @@ export default function MainScreen() {
   const effectiveCourierName = courier === 'other' ? (otherCourierName.trim() || null) : (selectedCourier?.name ?? null);
 
   const handleGenerate = async () => {
-    if (isGuest && guestSent >= 10) {
+    if (isGuest && guestSent >= GUEST_FREE_LIMIT) {
       setShowGuestGate(true);
       return;
     }
@@ -253,6 +263,7 @@ export default function MainScreen() {
           // Service-only fields
           appointmentTime:    appointmentTime.trim() || null,
           serviceNote,
+          orderItems,
           frustrationContext: frustration.context || null,
         }),
       });
@@ -294,16 +305,23 @@ export default function MainScreen() {
     if (!message) return;
 
     // Open the channel first — only count after the send fires
-    if      (channel === 'whatsapp') openWhatsApp(phoneNumber, message);
-    else if (channel === 'sms')      openSMS(phoneNumber, message);
-    else if (channel === 'email')    openEmail(email, profile?.businessName ?? '', message);
+    let opened = true;
+    if      (channel === 'whatsapp') opened = await openWhatsApp(phoneNumber, message);
+    else if (channel === 'sms')      opened = await openSMS(phoneNumber, message);
+    else if (channel === 'email')    opened = await openEmail(email, profile?.businessName ?? '', message);
     else                             await Share.share({ message });
+
+    if (!opened) {
+      Alert.alert('Could not open app', `No ${channel === 'sms' ? 'messaging' : 'email'} app is available on this device.`);
+      return;
+    }
 
     await addRecent({
       customerName: customerName.trim(),
       phoneNumber:  phoneNumber.trim(),
       email:        email.trim() || undefined,
       status:       status ?? '',
+      delayReason:  status === 'delay' ? delayReason : null,
       courier,
       channel,
       message,
@@ -318,7 +336,7 @@ export default function MainScreen() {
     if (isGuest) {
       const newGuestSent = await incrementGuestSent();
       setGuestSent(newGuestSent);
-      if (newGuestSent >= 10) setShowGuestGate(true);
+      if (newGuestSent >= GUEST_FREE_LIMIT) setShowGuestGate(true);
     }
     getRecent().then(r => { setLastEntry(r[0] ?? null); setForgotten(getForgottenCustomers(r)); });
 
@@ -332,43 +350,37 @@ export default function MainScreen() {
   };
 
   const handleClear = () => {
-    setOrderText(''); setCustomerName(''); setPhoneNumber(''); setEmail('');
-    setCourier(null); setOtherCourierName(''); setWaybill('');
-    setAppointmentTime(''); setStatus(null); setMessage(''); setTone('friendly');
-    clearStatusNotes();
+    resetForm();
     clearDraft();
   };
 
-  const handleRecentTap = (index: number) => {
-    setExpandedIndex(prev => prev === index ? null : index);
+  const handleRecentTap = (key: string) => {
+    setExpandedKey(prev => prev === key ? null : key);
   };
 
   const handleUseContact = (entry: RecentEntry) => {
-    // Pre-fill contact details
+    // Pre-fill contact details, clear all order-specific fields so the user starts fresh
     setCustomerName(entry.customerName);
     setPhoneNumber(entry.phoneNumber);
     setEmail(entry.email ?? '');
-    // Clear all order-specific fields so the user starts fresh
-    setOrderText('');
-    setStatus(null);
-    setReceivedNote(null); setDelayReason(null);
-    setDispatchDate(null); setReadyNote(null); setPreOrderNote(null);
-    setServiceNote(null); setAppointmentTime('');
-    setCourier(null); setOtherCourierName(''); setWaybill('');
-    setTone('friendly');
-    setMessage('');
+    resetOrderFields();
     clearDraft();
     setShowRecent(false);
     setSearchQuery('');
-    setExpandedIndex(null);
+    setExpandedKey(null);
     setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: false }), 150);
   };
 
   const handleRecentSend = async (entry: RecentEntry, channel: Channel) => {
-    if      (channel === 'whatsapp')            openWhatsApp(entry.phoneNumber, entry.message);
-    else if (channel === 'sms')                 openSMS(entry.phoneNumber, entry.message);
-    else if (channel === 'email' && entry.email) openEmail(entry.email, profile?.businessName ?? '', entry.message);
-    else                                         await Share.share({ message: entry.message });
+    let opened = true;
+    if      (channel === 'whatsapp')             opened = await openWhatsApp(entry.phoneNumber, entry.message);
+    else if (channel === 'sms')                  opened = await openSMS(entry.phoneNumber, entry.message);
+    else if (channel === 'email' && entry.email) opened = await openEmail(entry.email, profile?.businessName ?? '', entry.message);
+    else                                          await Share.share({ message: entry.message });
+
+    if (!opened) {
+      Alert.alert('Could not open app', `No ${channel === 'sms' ? 'messaging' : 'email'} app is available on this device.`);
+    }
   };
 
   const handleClearHistory = () => {
@@ -378,12 +390,11 @@ export default function MainScreen() {
     ]);
   };
 
-  const filteredRecent = recentList.filter(e => {
-    const matchesFilter = recentFilter === 'all' || e.status === recentFilter;
-    const q = searchQuery.trim().toLowerCase();
-    const matchesSearch = !q || e.customerName.toLowerCase().includes(q) || e.phoneNumber.includes(q);
-    return matchesFilter && matchesSearch;
-  });
+  const handleSelectForgotten = useCallback((name: string, phone: string, email: string) => {
+    setCustomerName(name);
+    setPhoneNumber(phone);
+    setEmail(email);
+  }, [setCustomerName, setPhoneNumber, setEmail]);
 
   const handleGuestAuth = async () => {
     await setWasGuest(false);
@@ -430,8 +441,8 @@ export default function MainScreen() {
         recentList={recentList}
         setRecentList={setRecentList}
         filteredRecent={filteredRecent}
-        expandedIndex={expandedIndex}
-        setExpandedIndex={setExpandedIndex}
+        expandedKey={expandedKey}
+        setExpandedKey={setExpandedKey}
         setShowRecent={setShowRecent}
         handleRecentTap={handleRecentTap}
         handleUseContact={handleUseContact}
@@ -443,7 +454,7 @@ export default function MainScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView ref={scrollRef} style={s.root} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {Hero}
 
@@ -464,11 +475,7 @@ export default function MainScreen() {
           forgotten={forgotten}
           lastEntry={lastEntry}
           profile={profile}
-          onSelectForgotten={(name, phone, email) => {
-            setCustomerName(name);
-            setPhoneNumber(phone);
-            setEmail(email);
-          }}
+          onSelectForgotten={handleSelectForgotten}
         />
 
         <OrderPaste

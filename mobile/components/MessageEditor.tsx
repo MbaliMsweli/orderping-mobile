@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { Colors } from '@/constants/colors';
 import type { Tone, Channel } from '@/lib/status-config';
@@ -18,7 +19,7 @@ interface Props {
   onClear:        () => void;
 }
 
-export default function MessageEditor({
+function MessageEditor({
   tone, setTone, profile, message, setMessage, generating,
   email, frustration, onGenerate, onSend, onClear,
 }: Props) {
@@ -137,6 +138,8 @@ export default function MessageEditor({
     </>
   );
 }
+
+export default memo(MessageEditor);
 
 const s = StyleSheet.create({
   card:         { backgroundColor: Colors.surface, marginHorizontal: 16, marginTop: 16, borderRadius: 18, padding: 18, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 2 },

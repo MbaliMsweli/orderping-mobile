@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { Colors } from '@/constants/colors';
 import { relativeTime } from '@/lib/format';
@@ -33,7 +34,9 @@ interface Props {
   onSelectForgotten:      (name: string, phone: string, email: string) => void;
 }
 
-export default function EngagementCards({
+const REMINDER_VISIBLE_LIMIT = 5;
+
+function EngagementCards({
   showGuestGate, isGuest, guestSent, guestBannerDismissed, setGuestBannerDismissed, onGuestAuth,
   todayCount,
   showWeekCard, setShowWeekCard, weekSummary,
@@ -144,9 +147,9 @@ export default function EngagementCards({
               {' '}<Text style={s.reminderLastMeta}>({STATUS_BADGES[lastEntry.status]?.label ?? lastEntry.status} · {relativeTime(lastEntry.timestamp)})</Text>
             </Text>
             <Text style={s.reminderQuestion}>Are you sure you're not missing anyone? 👀</Text>
-            {forgotten.map((c, i) => (
+            {forgotten.slice(0, REMINDER_VISIBLE_LIMIT).map((c) => (
               <TouchableOpacity
-                key={i}
+                key={c.phoneNumber}
                 style={s.reminderRow}
                 onPress={() => onSelectForgotten(c.customerName, c.phoneNumber, c.email ?? '')}
                 activeOpacity={0.8}
@@ -160,6 +163,11 @@ export default function EngagementCards({
                 <Text style={s.reminderArrow}>→</Text>
               </TouchableOpacity>
             ))}
+            {forgotten.length > REMINDER_VISIBLE_LIMIT && (
+              <Text style={s.reminderMore}>
+                +{forgotten.length - REMINDER_VISIBLE_LIMIT} more — open Recent to see everyone
+              </Text>
+            )}
           </View>
         ) : (
           <View style={s.allGoodCard}>
@@ -178,6 +186,8 @@ export default function EngagementCards({
     </>
   );
 }
+
+export default memo(EngagementCards);
 
 const s = StyleSheet.create({
   // Guest gate modal
@@ -234,6 +244,7 @@ const s = StyleSheet.create({
   reminderName:     { fontSize: 14, fontWeight: '600', color: '#78350F' },
   reminderMeta:     { fontSize: 12, fontWeight: '500', color: '#B45309', marginTop: 2 },
   reminderArrow:    { fontSize: 16, color: '#B45309', fontWeight: '600' },
+  reminderMore:     { fontSize: 12, fontWeight: '600', color: '#B45309', textAlign: 'center', marginTop: 4 },
 
   // All good
   allGoodCard:     { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#BBF7D0', borderRadius: 20, marginHorizontal: 16, marginTop: 16, paddingVertical: 16, paddingHorizontal: 18, shadowColor: '#16A34A', shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 2 },

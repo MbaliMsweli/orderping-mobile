@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/colors';
 
@@ -10,7 +11,7 @@ interface Props {
   setEmail:        (v: string) => void;
 }
 
-export default function CustomerInputs({ customerName, setCustomerName, phoneNumber, setPhoneNumber, email, setEmail }: Props) {
+function CustomerInputs({ customerName, setCustomerName, phoneNumber, setPhoneNumber, email, setEmail }: Props) {
   return (
     <View style={s.card}>
       <Text style={s.sectionLabel}>CUSTOMER</Text>
@@ -39,6 +40,8 @@ export default function CustomerInputs({ customerName, setCustomerName, phoneNum
     </View>
   );
 }
+
+export default memo(CustomerInputs);
 
 const s = StyleSheet.create({
   card:         { backgroundColor: Colors.surface, marginHorizontal: 16, marginTop: 16, borderRadius: 18, padding: 18, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 2 },

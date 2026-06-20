@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, KeyboardAvoidingView, Platform, Share,
@@ -19,19 +19,19 @@ interface Props {
   recentList:        RecentEntry[];
   setRecentList:     (v: RecentEntry[]) => void;
   filteredRecent:    RecentEntry[];
-  expandedIndex:     number | null;
-  setExpandedIndex:  (v: number | null) => void;
+  expandedKey:       string | null;
+  setExpandedKey:    (v: string | null) => void;
   setShowRecent:     (v: boolean) => void;
-  handleRecentTap:   (i: number) => void;
+  handleRecentTap:   (key: string) => void;
   handleUseContact:  (entry: RecentEntry) => void;
   handleRecentSend:  (entry: RecentEntry, channel: Channel) => void;
   handleClearHistory:() => void;
   profile:           BusinessProfile | null;
 }
 
-export default function RecentList({
+function RecentList({
   hero, searchQuery, setSearchQuery, recentFilter, setRecentFilter,
-  recentList, filteredRecent, expandedIndex, setShowRecent,
+  recentList, filteredRecent, expandedKey, setShowRecent,
   handleRecentTap, handleUseContact, handleRecentSend, handleClearHistory,
   profile,
 }: Props) {
@@ -43,7 +43,7 @@ export default function RecentList({
   }, [inputValue]);
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={s.root} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {hero}
 
@@ -89,14 +89,15 @@ export default function RecentList({
           </View>
         ) : (
           <View style={s.recentList}>
-            {filteredRecent.map((entry, i) => {
+            {filteredRecent.map((entry) => {
+              const key      = `${entry.phoneNumber}|${entry.timestamp}`;
               const badge    = STATUS_BADGES[entry.status];
-              const expanded = expandedIndex === i;
+              const expanded = expandedKey === key;
               const preview  = entry.message.replace(/\n/g, ' ').slice(0, 72);
               if (expanded) {
                 return (
-                  <View key={i} style={s.recentCard}>
-                    <TouchableOpacity onPress={() => handleRecentTap(i)} activeOpacity={0.85}>
+                  <View key={key} style={s.recentCard}>
+                    <TouchableOpacity onPress={() => handleRecentTap(key)} activeOpacity={0.85}>
                       <View style={s.recentCardTop}>
                         <Text style={s.recentName}>{entry.customerName}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -137,7 +138,7 @@ export default function RecentList({
                 );
               }
               return (
-                <TouchableOpacity key={i} style={s.recentCard} onPress={() => handleRecentTap(i)} activeOpacity={0.85}>
+                <TouchableOpacity key={key} style={s.recentCard} onPress={() => handleRecentTap(key)} activeOpacity={0.85}>
                   <View style={s.recentCardTop}>
                     <Text style={s.recentName}>{entry.customerName}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -171,6 +172,8 @@ export default function RecentList({
     </KeyboardAvoidingView>
   );
 }
+
+export default memo(RecentList);
 
 const s = StyleSheet.create({
   root:    { flex: 1, backgroundColor: Colors.background },

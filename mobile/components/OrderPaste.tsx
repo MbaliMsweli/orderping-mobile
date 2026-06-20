@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Colors } from '@/constants/colors';
 
@@ -9,7 +10,7 @@ interface Props {
   onExtract:    () => void;
 }
 
-export default function OrderPaste({ businessType, orderText, setOrderText, extracting, onExtract }: Props) {
+function OrderPaste({ businessType, orderText, setOrderText, extracting, onExtract }: Props) {
   return (
     <View style={s.card}>
       <Text style={s.sectionLabel}>{businessType === 'service' ? 'PASTE BOOKING' : 'PASTE ORDER'}</Text>
@@ -37,6 +38,8 @@ export default function OrderPaste({ businessType, orderText, setOrderText, extr
     </View>
   );
 }
+
+export default memo(OrderPaste);
 
 const s = StyleSheet.create({
   card:         { backgroundColor: Colors.surface, marginHorizontal: 16, marginTop: 16, borderRadius: 18, padding: 18, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 2 },

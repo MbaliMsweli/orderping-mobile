@@ -222,3 +222,114 @@ CREATE POLICY "insert_own_jobs"
 CREATE POLICY "select_own_jobs"
   ON public.notification_jobs FOR SELECT
   USING (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration: run this block in the Supabase SQL Editor against an existing
+-- database to pick up the audit fixes below. All statements are idempotent.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- 1. Atomic job claim — avoids two overlapping worker runs picking up the same
+--    row (SELECT-then-UPDATE from app code is a race; FOR UPDATE SKIP LOCKED
+--    inside a single SECURITY DEFINER function is not). Called by
+--    orderflow-ai/app/api/worker/process-jobs/route.ts via supabaseAdmin.rpc().
+CREATE OR REPLACE FUNCTION public.claim_notification_jobs(p_limit INT DEFAULT 50)
+RETURNS SETOF public.notification_jobs
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  UPDATE public.notification_jobs
+  SET status = 'processing'
+  WHERE id IN (
+    SELECT id FROM public.notification_jobs
+    WHERE status = 'pending' AND scheduled_for <= NOW() AND attempts < max_attempts
+    ORDER BY scheduled_for
+    LIMIT p_limit
+    FOR UPDATE SKIP LOCKED
+  )
+  RETURNING *;
+END;
+$$;
+
+-- 2. usage_logs / audit_logs: writes are service-role-only by design (RLS is on,
+--    only a SELECT policy exists for the owner — no INSERT/UPDATE/DELETE policy
+--    means PostgREST denies those by default). Documented explicitly so a future
+--    "helpful" permissive INSERT policy doesn't let users forge their own audit
+--    trail or usage numbers.
+COMMENT ON TABLE public.usage_logs IS
+  'Writes are service-role-only (orderflow-ai/lib/supabase-admin.ts). Do not add an INSERT policy for authenticated/anon roles.';
+COMMENT ON TABLE public.audit_logs IS
+  'Writes are service-role-only (orderflow-ai/lib/supabase-admin.ts). Do not add an INSERT policy for authenticated/anon roles.';
+
+-- 3. recent_messages retention: defense-in-depth hard cap per user so a client
+--    bug (or a user syncing across many devices) can't grow this table unbounded
+--    even if the 90-day pg_cron job below is never enabled.
+CREATE OR REPLACE FUNCTION public.trim_recent_messages() RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM public.recent_messages
+  WHERE user_id = NEW.user_id
+    AND id NOT IN (
+      SELECT id FROM public.recent_messages
+      WHERE user_id = NEW.user_id
+      ORDER BY sent_at DESC
+      LIMIT 100
+    );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_trim_recent_messages ON public.recent_messages;
+CREATE TRIGGER trg_trim_recent_messages
+  AFTER INSERT ON public.recent_messages
+  FOR EACH ROW EXECUTE FUNCTION public.trim_recent_messages();
+
+-- Enable the pg_cron extension in Supabase Dashboard → Database → Extensions,
+-- then run this once (not idempotent via IF NOT EXISTS — cron.schedule upserts
+-- by job name, so re-running with the same name is safe):
+-- SELECT cron.schedule(
+--   'cleanup-old-messages',
+--   '0 3 * * *',
+--   $$DELETE FROM public.recent_messages WHERE sent_at < NOW() - INTERVAL '90 days'$$
+-- );
+
+-- 4. updated_at trigger on profiles — the column existed but nothing updated it.
+CREATE OR REPLACE FUNCTION public.set_updated_at() RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_profiles_updated_at ON public.profiles;
+CREATE TRIGGER trg_profiles_updated_at
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 5. CHECK constraints on enum-like free-text columns, so a buggy client build
+--    can't sync garbage values that silently break status filtering downstream.
+DO $$ BEGIN
+  ALTER TABLE public.recent_messages
+    ADD CONSTRAINT chk_recent_messages_channel
+    CHECK (channel IN ('whatsapp', 'sms', 'email', 'copy'));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.profiles
+    ADD CONSTRAINT chk_profiles_business_type
+    CHECK (business_type IN ('product', 'service'));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- NOTE: not migrated here — recent_messages.customer_name/phone_number are
+-- nullable, but the app never sends them empty. Consider NOT NULL once you've
+-- confirmed no existing rows violate it:
+--   SELECT count(*) FROM public.recent_messages WHERE customer_name IS NULL OR phone_number IS NULL;
+
+-- NOTE: not migrated here — the recent_messages_user_phone_time_key unique
+-- constraint (user_id, phone_number, sent_at) is timestamp-based and used as
+-- the upsert conflict target in mobile/lib/storage.ts and orderflow-ai/lib/storage.ts.
+-- Switching to a client-generated idempotency key (e.g. a `client_id UUID` column)
+-- would be more robust but requires coordinated app-side changes on both
+-- platforms (generate + send the id, update the onConflict target) — do this as
+-- its own change, not bundled into a schema migration.

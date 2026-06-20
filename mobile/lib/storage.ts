@@ -260,6 +260,7 @@ export interface FormDraft {
   otherCourierName: string;
   waybill:          string;
   message:          string;
+  orderItems:       string | null;
 }
 
 const DRAFT_KEY        = 'orderping_draft';

@@ -1,23 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { checkRateLimit } from '@/lib/rate-limit';
 import { corsHeaders } from '@/lib/cors';
-import { supabaseAdmin } from '@/lib/supabase-admin';
-import { enforceUsageLimits, getClientIp } from '@/lib/usage-guard';
+import { withApiGuards, callClaude, logUsage } from '@/lib/api-guards';
 import { log, logException } from '@/lib/logger';
 
-if (!process.env.ANTHROPIC_API_KEY)             throw new Error('ANTHROPIC_API_KEY is not set');
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL)      throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set');
-if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is not set');
+if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-);
 
 const bodySchema = z.object({
   businessType:        z.enum(['product', 'service']).default('product'),
@@ -104,46 +94,7 @@ export async function OPTIONS(req: NextRequest) {
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
-  const origin = req.headers.get('origin');
-  const cors = corsHeaders(origin);
-
-  try {
-    // ── Auth ────────────────────────────────────────────────────────────────────
-    const authHeader = req.headers.get('authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-    }
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-    }
-
-    // ── Rate limit (per user) ─────────────────────────────────────────────────────
-    const { limited, remaining, reset } = await checkRateLimit(user.id);
-    const rlHeaders = {
-      ...cors,
-      'RateLimit-Remaining': String(remaining),
-      'RateLimit-Reset':     String(reset),
-    };
-    if (limited) {
-      log('warn', 'rate_limited', { userId: user.id, endpoint: 'generate-message' });
-      return NextResponse.json(
-        { error: 'Too many requests. Please wait a moment.' },
-        { status: 429, headers: rlHeaders },
-      );
-    }
-
-    // ── Abuse / cost guards (per-IP, guest lifetime cap, global daily cap) ─────────
-    const guard = await enforceUsageLimits({
-      userId:      user.id,
-      isAnonymous: user.is_anonymous ?? false,
-      ip:          getClientIp(req),
-    });
-    if (!guard.ok) {
-      return NextResponse.json({ error: guard.error }, { status: guard.status, headers: rlHeaders });
-    }
-
+  return withApiGuards(req, 'generate-message', async ({ user, rlHeaders }) => {
     // ── Validation ─────────────────────────────────────────────────────────────
     const raw = await req.json();
     const parsed = bodySchema.safeParse(raw);
@@ -208,27 +159,19 @@ Business: ${businessName}`;
     const systemPrompt = isService ? SERVICE_SYSTEM_PROMPT : PRODUCT_SYSTEM_PROMPT;
 
     // ── Claude call ─────────────────────────────────────────────────────────────
-    let response;
-    try {
-      response = await anthropic.messages.create(
-        {
-          model:      'claude-sonnet-4-6',
-          max_tokens: 256,
-          system:     systemPrompt,
-          messages:   [{ role: 'user', content: userPrompt }],
-        },
-        { timeout: 25_000, maxRetries: 2 },
-      );
-    } catch (err) {
-      if (err instanceof Anthropic.APIError && (err.status === 429 || err.status === 529)) {
-        log('warn', 'anthropic_overloaded', { status: err.status, endpoint: 'generate-message' });
-        return NextResponse.json(
-          { error: 'High demand right now — please try again in a moment.' },
-          { status: 503, headers: rlHeaders },
-        );
-      }
-      throw err;
-    }
+    const result = await callClaude(
+      anthropic,
+      {
+        model:      'claude-sonnet-4-6',
+        max_tokens: 256,
+        system:     systemPrompt,
+        messages:   [{ role: 'user', content: userPrompt }],
+      },
+      'generate-message',
+      rlHeaders,
+    );
+    if (result instanceof NextResponse) return result;
+    const response = result;
 
     const block = response.content[0];
     const message = block && block.type === 'text' ? block.text : '';
@@ -241,29 +184,9 @@ Business: ${businessName}`;
     }
     const tokensUsed = response.usage.input_tokens + response.usage.output_tokens;
 
-    log('info', 'generate_message', {
-      userId:      user.id,
-      status,
-      businessType,
-      tone,
-      tokensUsed,
-    });
-
-    // ── Usage logging (fire-and-forget, non-blocking) ──────────────────────────
-    supabaseAdmin.from('usage_logs').insert({
-      user_id:     user.id,
-      endpoint:    'generate-message',
-      tokens_used: tokensUsed,
-    }).then(({ error }) => {
-      if (error) log('warn', 'usage_log_failed', { userId: user.id, error: error.message });
-    });
+    log('info', 'generate_message', { userId: user.id, status, businessType, tone, tokensUsed });
+    logUsage(user.id, 'generate-message', tokensUsed);
 
     return NextResponse.json({ message }, { headers: rlHeaders });
-  } catch (err) {
-    logException(err, { endpoint: 'generate-message' });
-    return NextResponse.json(
-      { error: 'Something went wrong. Please try again.' },
-      { status: 500, headers: cors },
-    );
-  }
+  });
 }

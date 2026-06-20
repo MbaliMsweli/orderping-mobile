@@ -1,26 +1,31 @@
 import { Linking, Platform } from 'react-native';
+import { buildWhatsAppLink, buildSMSLink, buildEmailLink } from '@shared/deep-links';
 
-function formatWhatsAppNumber(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('0')) return '27' + digits.slice(1);
-  if (digits.startsWith('27')) return digits;
-  return '27' + digits;
+// All three return false (instead of throwing) when the target app/scheme isn't
+// available on the device, so callers can show an Alert instead of a silent no-op.
+
+export async function openWhatsApp(phone: string, message: string): Promise<boolean> {
+  try {
+    await Linking.openURL(buildWhatsAppLink(phone, message)); // wa.me always resolves via browser fallback
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export function openWhatsApp(phone: string, message: string): void {
-  const number  = formatWhatsAppNumber(phone);
-  const encoded = encodeURIComponent(message);
-  Linking.openURL(`https://wa.me/${number}?text=${encoded}`);
-}
-
-export function openSMS(phone: string, message: string): void {
-  const encoded   = encodeURIComponent(message);
+export async function openSMS(phone: string, message: string): Promise<boolean> {
   const separator = Platform.OS === 'ios' ? '&' : '?';
-  Linking.openURL(`sms:${phone}${separator}body=${encoded}`);
+  const url = buildSMSLink(phone, message, separator);
+  const supported = await Linking.canOpenURL(url);
+  if (!supported) return false;
+  await Linking.openURL(url);
+  return true;
 }
 
-export function openEmail(email: string, businessName: string, message: string): void {
-  const subject = encodeURIComponent(`Order update from ${businessName}`);
-  const body    = encodeURIComponent(message);
-  Linking.openURL(`mailto:${email}?subject=${subject}&body=${body}`);
+export async function openEmail(email: string, businessName: string, message: string): Promise<boolean> {
+  const url = buildEmailLink(email, businessName, message);
+  const supported = await Linking.canOpenURL(url);
+  if (!supported) return false;
+  await Linking.openURL(url);
+  return true;
 }

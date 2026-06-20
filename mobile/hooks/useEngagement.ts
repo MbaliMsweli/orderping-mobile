@@ -19,11 +19,22 @@ export function useEngagement({ phoneNumber }: { phoneNumber: string }) {
   const [showWelcomeBack, setShowWelcomeBack]   = useState(false);
 
   // Recent messages view
-  const [showRecent, setShowRecent]       = useState(false);
-  const [recentList, setRecentList]       = useState<RecentEntry[]>([]);
-  const [recentFilter, setRecentFilter]   = useState('all');
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery]     = useState('');
+  const [showRecent, setShowRecent]     = useState(false);
+  const [recentList, setRecentList]     = useState<RecentEntry[]>([]);
+  const [recentFilter, setRecentFilter] = useState('all');
+  // Stable key (phoneNumber|timestamp) rather than array index, so an expanded
+  // card stays correctly associated when the list re-filters or re-sorts.
+  const [expandedKey, setExpandedKey]   = useState<string | null>(null);
+  const [searchQuery, setSearchQuery]   = useState('');
+
+  const filteredRecent = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return recentList.filter(e => {
+      const matchesFilter = recentFilter === 'all' || e.status === recentFilter;
+      const matchesSearch = !q || e.customerName.toLowerCase().includes(q) || e.phoneNumber.includes(q);
+      return matchesFilter && matchesSearch;
+    });
+  }, [recentList, recentFilter, searchQuery]);
 
   // Mood detection — derived value, no extra render cycle needed
   const frustration: FrustrationResult = useMemo(() => {
@@ -68,7 +79,8 @@ export function useEngagement({ phoneNumber }: { phoneNumber: string }) {
     showRecent, setShowRecent,
     recentList, setRecentList,
     recentFilter, setRecentFilter,
-    expandedIndex, setExpandedIndex,
+    filteredRecent,
+    expandedKey, setExpandedKey,
     searchQuery, setSearchQuery,
     frustration,
     isGuest, setIsGuest,

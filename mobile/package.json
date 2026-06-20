@@ -31,5 +31,14 @@
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
   },
+  "overrides": {
+    "react-devtools-core": {
+      "ws": "^6.2.4"
+    },
+    "metro": {
+      "ws": "^7.5.11"
+    },
+    "ws": "^8.21.0"
+  },
   "private": true
 }

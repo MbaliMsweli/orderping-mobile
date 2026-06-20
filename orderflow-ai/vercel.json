@@ -1,6 +1,7 @@
 {
   "framework": "nextjs",
   "installCommand": "npm install --legacy-peer-deps",
+  "regions": ["cpt1"],
   "crons": [
     {
       "path": "/api/worker/process-jobs",

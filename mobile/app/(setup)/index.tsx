@@ -5,12 +5,14 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getProfile, saveProfile, syncProfileToSupabase, fetchProfileFromSupabase } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { Colors } from '@/constants/colors';
 
 export default function SetupScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading]               = useState(true);
   const [isGuest, setIsGuest]               = useState(false);
   const [businessType, setBusinessType]     = useState<'product' | 'service'>('product');
@@ -93,7 +95,7 @@ export default function SetupScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView style={s.root} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <ScrollView style={s.root} contentContainerStyle={[s.content, { paddingTop: insets.top + 20 }]} keyboardShouldPersistTaps="handled">
 
         {router.canGoBack() && (
           <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
@@ -113,6 +115,9 @@ export default function SetupScreen() {
               style={[s.typeCard, businessType === 'product' && s.typeCardActive]}
               onPress={() => setBusinessType('product')}
               activeOpacity={0.8}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: businessType === 'product' }}
+              accessibilityLabel="Product business type"
             >
               <Text style={s.typeEmoji}>📦</Text>
               <Text style={[s.typeLabel, businessType === 'product' && s.typeLabelActive]}>Product</Text>
@@ -122,6 +127,9 @@ export default function SetupScreen() {
               style={[s.typeCard, businessType === 'service' && s.typeCardActive]}
               onPress={() => setBusinessType('service')}
               activeOpacity={0.8}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: businessType === 'service' }}
+              accessibilityLabel="Service business type"
             >
               <Text style={s.typeEmoji}>🔧</Text>
               <Text style={[s.typeLabel, businessType === 'service' && s.typeLabelActive]}>Service</Text>

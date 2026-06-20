@@ -4,6 +4,7 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { getProfile, fetchProfileFromSupabase, getWasGuest, setWasGuest } from '@/lib/storage';
 import { Colors } from '@/constants/colors';
@@ -12,6 +13,7 @@ type Mode = 'signin' | 'signup' | 'forgot';
 
 export default function AuthScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<Mode>('signin');
   const [checking, setChecking] = useState(true);
   const [email, setEmail] = useState('');
@@ -46,7 +48,13 @@ export default function AuthScreen() {
         const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (err) throw err;
       } else {
-        const { error: err } = await supabase.auth.signUp({ email: email.trim(), password });
+        // If currently in an anonymous (guest) session, link it via updateUser() instead of
+        // signUp() — signUp() would mint a brand-new user id and orphan every profiles/
+        // recent_messages row already synced under the anonymous id.
+        const { data: { user } } = await supabase.auth.getUser();
+        const { error: err } = user?.is_anonymous
+          ? await supabase.auth.updateUser({ email: email.trim(), password })
+          : await supabase.auth.signUp({ email: email.trim(), password });
         if (err) throw err;
       }
       await setWasGuest(false);
@@ -111,7 +119,7 @@ export default function AuthScreen() {
   if (mode === 'forgot') {
     return (
       <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[s.scroll, { paddingTop: Math.max(insets.top, 24) + 56 }]} keyboardShouldPersistTaps="handled">
           <View style={s.brand}>
             <Text style={s.brandText}>
               <Text style={s.brandOrder}>Order</Text>
@@ -173,7 +181,7 @@ export default function AuthScreen() {
   // ── Sign in / Sign up view ────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[s.scroll, { paddingTop: Math.max(insets.top, 24) + 56 }]} keyboardShouldPersistTaps="handled">
         {/* Brand */}
         <View style={s.brand}>
           <Text style={s.brandText}>
@@ -253,7 +261,7 @@ export default function AuthScreen() {
 
 const s = StyleSheet.create({
   root:             { flex: 1, backgroundColor: Colors.background },
-  scroll:           { flexGrow: 1, padding: 24, paddingTop: 80, paddingBottom: 40 },
+  scroll:           { flexGrow: 1, padding: 24, paddingBottom: 40 },
   brand:            { alignItems: 'center', marginBottom: 40 },
   brandText:        { fontSize: 36, letterSpacing: -0.5 },
   brandOrder:       { color: Colors.text, fontWeight: '600' },

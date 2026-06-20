@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/colors';
 import {
@@ -40,7 +41,7 @@ interface Props {
   setWaybill:           (v: string) => void;
 }
 
-export default function StatusPicker({
+function StatusPicker({
   status, onStatusPress, profile,
   receivedNote, setReceivedNote, delayReason, setDelayReason,
   dispatchDate, setDispatchDate, readyNote, setReadyNote,
@@ -232,6 +233,8 @@ export default function StatusPicker({
     </>
   );
 }
+
+export default memo(StatusPicker);
 
 const s = StyleSheet.create({
   card:         { backgroundColor: Colors.surface, marginHorizontal: 16, marginTop: 16, borderRadius: 18, padding: 18, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
